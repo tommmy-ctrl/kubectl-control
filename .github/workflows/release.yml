@@ -48,7 +48,7 @@ jobs:
         run: vsce package --out kubectl-control.vsix
 
       - name: Create GitHub Release & upload .vsix
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: kubectl-control.vsix
           generate_release_notes: true
