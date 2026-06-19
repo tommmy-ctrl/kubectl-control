@@ -30,6 +30,9 @@ CONTRIBUTING.md
 **/*.map
 **/*.ts
 
+# npm lockfile (not needed inside .vsix)
+package-lock.json
+
 # Misc
 *.vsix
 *.log

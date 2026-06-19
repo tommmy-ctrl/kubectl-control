@@ -1,95 +1,100 @@
 # Kubectl Control
 
-VS Code-Erweiterung zur Verwaltung mehrerer Kubernetes-Cluster mit isolierten Terminals direkt in VS Code.
+A VS Code extension for managing multiple Kubernetes clusters with isolated kubeconfig terminals — directly inside VS Code.
 
 ## Features
 
-### Verbindungsverwaltung
-- Cluster-Verbindungen mit Name, kubeconfig-YAML, Gruppe und Shell speichern
-- kubeconfig-Datei direkt aus dem Dateisystem laden (📂 Laden-Button)
-- Automatische Validierung und Context-Erkennung beim Eintippen
-- Bei mehreren Contexts: gewünschten Context auswählen
-- Namespace wird automatisch aus dem aktiven Context extrahiert
+### Connection Management
+- Save cluster connections with name, kubeconfig YAML, group, and shell preference
+- Load kubeconfig directly from the filesystem (📂 Load button)
+- Automatic validation and context detection while typing
+- Select a specific context when a kubeconfig contains multiple contexts
+- Namespace is automatically extracted from the active context
 
-### Cluster-Terminal
-- Jede Verbindung öffnet ein isoliertes VS Code-Terminal mit gesetzter `KUBECONFIG`-Umgebungsvariable
-- Offene Terminals werden erkannt — Klick auf einen laufenden Cluster fokussiert das bestehende Terminal
-- Shell pro Verbindung wählbar: Standard, bash, zsh, PowerShell, cmd
+### Cluster Terminal
+- Each connection opens an isolated VS Code terminal with `KUBECONFIG` set to a temporary file
+- Open terminals are tracked — clicking a running cluster focuses the existing terminal instead of opening a new one
+- Shell configurable per connection: Default, bash, zsh, PowerShell, cmd
 
-### Quick Switch (`Ctrl+Shift+K`)
-- Öffnet eine Schnellauswahl aller gespeicherten Verbindungen
-- Zeigt an, ob ein Terminal bereits geöffnet ist
-- Neues Terminal öffnen oder bestehendes fokussieren
+### Quick Switch (`Ctrl+Shift+K` / `Cmd+Shift+K`)
+- Opens a quick-pick list of all saved connections
+- Shows whether a terminal is already open
+- Opens a new terminal or focuses the existing one
 
-### Gruppen
-- Verbindungen einer Gruppe zuweisen (z.B. "Produktion", "Staging")
-- Gruppen erscheinen als aufklappbare Ordner im CLUSTERS-Panel
+### Groups
+- Assign connections to a group (e.g. "Production", "Staging")
+- Groups appear as collapsible folders in the CLUSTERS panel
 
-### Sicherheit
-- Alle kubeconfig-Daten werden in VS Codes verschlüsseltem `SecretStorage` gespeichert (lokal, nicht synchronisiert)
-- Optionaler Passwort-Schutz: Erweiterung beim Öffnen sperren
-- Export immer AES-256-GCM-verschlüsselt mit eigenem Passwort (PBKDF2, 200.000 Iterationen)
-- Temporäre kubeconfig-Dateien werden in `os.tmpdir()` mit Dateimodus `0600` abgelegt
+### Security
+- All kubeconfig data is stored in VS Code's encrypted `SecretStorage` (local, never synced to cloud)
+- Optional password lock: prompt for a password when the extension opens
+- Exports are always AES-256-GCM encrypted with a user-chosen password (PBKDF2, 200,000 iterations)
+- Temporary kubeconfig files are written with mode `0600` and deleted when the terminal closes
 
 ### Import / Export
-- Export: alle Verbindungen als verschlüsselte JSON-Datei speichern
-- Import: verschlüsselte oder unverschlüsselte JSON-Dateien importieren
-- Beim Import werden bestehende Verbindungen (gleiche ID) aktualisiert, neue hinzugefügt
+- Export: save all connections as an encrypted JSON file
+- Import: import encrypted or plain JSON files
+- On import, existing connections (same ID) are updated; new ones are added
 
-## Erster Start
+## First Start
 
-Beim ersten Start erscheint ein Setup-Assistent:
-1. Optionaler Import vorhandener Verbindungen aus einer Exportdatei
-2. Optionaler Passwort-Schutz aktivieren
+A setup wizard appears on first launch:
+1. Optionally import existing connections from an export file
+2. Optionally enable password protection
 
-Das CLUSTERS-Panel ist während des Setups ausgeblendet und erscheint erst nach Abschluss.
+The CLUSTERS panel is hidden during setup and appears once setup is complete.
 
-## Einstellungsmenü (⚙)
+## Settings Menu (⚙)
 
-| Aktion | Beschreibung |
+| Action | Description |
 |---|---|
-| Export (verschlüsselt) | Verbindungen als verschlüsselte JSON exportieren |
-| Import | Verbindungen aus Datei importieren |
-| Passwort-Schutz aktivieren | Lock beim Öffnen einschalten |
-| Passwort ändern | Aktuelles Passwort ersetzen |
-| Passwort-Schutz deaktivieren | Lock entfernen |
-| Erweiterung sperren | Sofort sperren (nur bei aktivem Lock) |
-| Debug-Logs anzeigen | Output-Panel mit Logs öffnen |
-| Anwendung zurücksetzen | Alles löschen (doppelte Bestätigung) |
+| Export (encrypted) | Export all connections as an encrypted JSON file |
+| Import | Import connections from a file |
+| Enable password lock | Prompt for a password on open |
+| Change password | Replace the current password |
+| Disable password lock | Remove the lock |
+| Lock now | Lock immediately (only when lock is active) |
+| Show debug logs | Open the Output panel with extension logs |
+| Reset application | Delete everything (double confirmation required) |
 
-## Tastenkürzel
+## Keyboard Shortcuts
 
-| Kürzel | Aktion |
+| Shortcut | Action |
 |---|---|
-| `Ctrl+Shift+K` / `Cmd+Shift+K` | Quick Switch — Cluster schnell öffnen/wechseln |
+| `Ctrl+Shift+K` / `Cmd+Shift+K` | Quick Switch — open or focus a cluster terminal |
 
 ## Debugging & Logging
 
-Logs werden im VS Code Output-Panel unter **"Kubectl Control"** angezeigt.
+Logs are written to the VS Code Output panel under **"Kubectl Control"**.
 
-Öffnen über:
-- Einstellungsmenü → **Debug-Logs anzeigen**
-- Befehlspalette (`Ctrl+Shift+P`) → `Kubectl Control: Debug-Logs anzeigen`
+Open via:
+- Settings menu → **Show debug logs**
+- Command palette (`Ctrl+Shift+P`) → `Kubectl Control: Show Debug Logs`
 
-Die Logs enthalten Zeitstempel, Level (`INFO`, `WARN`, `ERROR`) und bei Fehlern den vollständigen Stack-Trace.
+Logs include timestamps, level (`INFO`, `WARN`, `ERROR`) and full stack traces for errors.
 
-## Datenspeicherung
+## Data Storage
 
-| Was | Wo |
+| What | Where |
 |---|---|
-| Cluster-Verbindungen (kubeconfig) | VS Code `SecretStorage` (lokal, verschlüsselt) |
-| Temporäre kubeconfig-Dateien | `os.tmpdir()/kubectl-control-ext/kubeconfig-<id>.yaml` |
-| Setup-Status | VS Code `globalState` |
-| Passwort-Hash + Salt | VS Code `SecretStorage` |
+| Cluster connections (kubeconfig) | VS Code `SecretStorage` (local, encrypted) |
+| Temporary kubeconfig files | `os.tmpdir()/kubectl-control-ext/kubeconfig-<id>.yaml` (deleted on terminal close) |
+| Setup state | VS Code `globalState` |
+| Password hash + salt | VS Code `SecretStorage` |
 
-## Technische Details
+## Technical Details
 
-- **Verschlüsselung:** AES-256-GCM via Node.js `node:crypto`
-- **Key Derivation:** PBKDF2-SHA256, 200.000 Iterationen
-- **Speicherformat:** VS Code `SecretStorage` (OS-Keychain / verschlüsselter lokaler Speicher)
-- **Bundle:** Webpack, keine externen Laufzeit-Abhängigkeiten außer `uuid`
+- **Encryption:** AES-256-GCM via Node.js `node:crypto`
+- **Key derivation:** PBKDF2-SHA256, 200,000 iterations, random salt per export
+- **Password verification:** `crypto.timingSafeEqual` to prevent timing attacks
+- **Storage:** VS Code `SecretStorage` (OS keychain / encrypted local storage)
+- **Bundle:** Webpack — no external runtime dependencies except `uuid`
 
-## Anforderungen
+## Requirements
 
-- VS Code 1.80.0 oder neuer
-- `kubectl` muss im PATH vorhanden sein (wird von den geöffneten Terminals genutzt)
+- VS Code 1.80.0 or later
+- `kubectl` must be available in `PATH` (used by the opened terminals)
+
+## License
+
+MIT — see [LICENSE](LICENSE)

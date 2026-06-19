@@ -75,7 +75,7 @@ export async function promptSetPassword(lockService: LockService): Promise<boole
     return true;
 }
 
-// Used by settings menu "Setup erneut ausführen" — runs as QuickPick wizard (alternative to panel wizard)
+// Used by the settings menu — runs import + password setup as a QuickPick wizard (alternative to the panel wizard)
 export async function runSetupWizard(
     store: ClusterStore,
     lockService: LockService,

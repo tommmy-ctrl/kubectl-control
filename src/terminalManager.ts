@@ -5,13 +5,27 @@ import * as fs from 'node:fs/promises';
 import { ClusterProfile, ShellType } from './store';
 import { log } from './logger';
 
-const SHELL_PATHS: Record<ShellType, string | undefined> = {
-    default:    undefined,
-    bash:       process.platform === 'win32' ? String.raw`C:\Program Files\Git\bin\bash.exe` : '/bin/bash',
-    zsh:        '/bin/zsh',
-    powershell: process.platform === 'win32' ? 'powershell.exe' : 'pwsh',
-    cmd:        'cmd.exe',
-};
+// On Windows, prefer Git Bash if present; fall back to undefined (VS Code default shell) so the terminal still opens.
+function resolveShellPath(shell: ShellType): string | undefined {
+    if (shell === 'default') { return undefined; }
+    if (shell === 'bash' && process.platform === 'win32') {
+        const gitBash = String.raw`C:\Program Files\Git\bin\bash.exe`;
+        try {
+            require('node:fs').accessSync(gitBash);
+            return gitBash;
+        } catch {
+            return undefined; // Git Bash not found — use VS Code default
+        }
+    }
+    const paths: Record<ShellType, string | undefined> = {
+        default:    undefined,
+        bash:       '/bin/bash',
+        zsh:        '/bin/zsh',
+        powershell: process.platform === 'win32' ? 'powershell.exe' : 'pwsh',
+        cmd:        'cmd.exe',
+    };
+    return paths[shell];
+}
 
 export class TerminalManager implements vscode.Disposable {
     private readonly openTerminals = new Map<string, vscode.Terminal>();
@@ -73,7 +87,7 @@ export class TerminalManager implements vscode.Disposable {
             const kubeconfigPath = this.tempFilePath(profile.id);
             await fs.writeFile(kubeconfigPath, profile.kubeconfigData, { encoding: 'utf-8', mode: 0o600 });
 
-            const shellPath = profile.shell ? SHELL_PATHS[profile.shell] : undefined;
+            const shellPath = profile.shell ? resolveShellPath(profile.shell) : undefined;
 
             const terminal = vscode.window.createTerminal({
                 name: `☸ ${profile.name}`,

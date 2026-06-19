@@ -63,7 +63,7 @@
       },
       {
         "command": "kubectl-control.showLogs",
-        "title": "Kubectl Control: Debug-Logs anzeigen"
+        "title": "Kubectl Control: Show Debug Logs"
       }
     ],
     "keybindings": [
