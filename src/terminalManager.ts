@@ -72,7 +72,42 @@ export class TerminalManager implements vscode.Disposable {
             existing.show();
             return;
         }
+        if (!await this.isKubectlAvailable()) {
+            const { openAnyway } = await this.showKubectlMissingWarning();
+            if (!openAnyway) { return; }
+        }
         await this.openNew(profile);
+    }
+
+    private async isKubectlAvailable(): Promise<boolean> {
+        const { exec } = await import('node:child_process');
+        const { promisify } = await import('node:util');
+        const execAsync = promisify(exec);
+        try {
+            await execAsync('kubectl version --client --output=json');
+            return true;
+        } catch (e: unknown) {
+            // Exit code 1 with output still means kubectl exists but cannot reach server — that's fine
+            const err = e as { stdout?: string; stderr?: string };
+            if (err.stdout?.includes('clientVersion') || err.stderr?.includes('clientVersion')) {
+                return true;
+            }
+            log.warn('kubectl not found in PATH', e);
+            return false;
+        }
+    }
+
+    private async showKubectlMissingWarning(): Promise<{ openAnyway: boolean }> {
+        log.warn('kubectl not found in PATH — showing install prompt');
+        const choice = await vscode.window.showWarningMessage(
+            'kubectl was not found in PATH. Install it to use this terminal.',
+            'Install kubectl',
+            'Open anyway',
+        );
+        if (choice === 'Install kubectl') {
+            void vscode.env.openExternal(vscode.Uri.parse('https://kubernetes.io/docs/tasks/tools/'));
+        }
+        return { openAnyway: choice === 'Open anyway' };
     }
 
     private tempFilePath(clusterId: string): string {
