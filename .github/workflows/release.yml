@@ -1,0 +1,52 @@
+name: Release & Publish
+
+on:
+  push:
+    tags:
+      - 'v*'   # triggers on v1.0.0, v1.2.3, etc.
+
+jobs:
+  release:
+    name: Build, Package & Publish
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # needed to upload release assets
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Convert SVG icon to PNG (128x128)
+        run: |
+          sudo apt-get install -y librsvg2-bin
+          rsvg-convert -w 128 -h 128 resources/icon.svg -o resources/icon.png
+
+      - name: Build extension
+        run: npm run package   # webpack production build
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Package .vsix
+        run: vsce package --out kubectl-control.vsix
+
+      - name: Create GitHub Release & upload .vsix
+        uses: softprops/action-gh-release@v2
+        with:
+          files: kubectl-control.vsix
+          generate_release_notes: true
+
+      - name: Publish to VS Code Marketplace
+        run: vsce publish --packagePath kubectl-control.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}

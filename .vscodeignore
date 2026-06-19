@@ -1,13 +1,35 @@
-.vscode/**
-.vscode-test/**
+# Build inputs — not needed in packaged extension
+src/**
 out/**
 node_modules/**
-src/**
+
+# Config & tooling
+.vscode/**
+.vscode-test/**
+.github/**
+webpack.config.js
+tsconfig.json
+.eslintrc.json
+.eslintignore
 .gitignore
 .yarnrc
-webpack.config.js
+.npmrc
+
+# Test artifacts
+**/*.test.ts
+**/*.spec.ts
+test/**
+coverage/**
+
+# Docs / meta (keep README.md and LICENSE)
 vsc-extension-quickstart.md
-**/tsconfig.json
-**/.eslintrc.json
+CHANGELOG.md
+CONTRIBUTING.md
+
+# Source maps & TypeScript output
 **/*.map
 **/*.ts
+
+# Misc
+*.vsix
+*.log

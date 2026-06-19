@@ -1,8 +1,28 @@
 {
   "name": "kubectl-control",
   "displayName": "Kubectl Control",
-  "description": "Manage multiple kubectl terminals with isolated configs",
-  "version": "0.0.1",
+  "description": "Manage multiple Kubernetes clusters with isolated kubeconfig terminals, group support, and encrypted export/import.",
+  "version": "1.0.0",
+  "author": "Tom Kölsch",
+  "publisher": "tommmy-ctrl",
+  "license": "MIT",
+  "icon": "resources/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tommmy-ctrl/kubectl-control"
+  },
+  "bugs": {
+    "url": "https://github.com/tommmy-ctrl/kubectl-control/issues"
+  },
+  "keywords": [
+    "kubernetes",
+    "kubectl",
+    "kubeconfig",
+    "k8s",
+    "cluster",
+    "terminal",
+    "devops"
+  ],
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -24,8 +44,33 @@
         "icon": "$(trash)"
       },
       {
+        "command": "kubectl-control.editCluster",
+        "title": "Edit Cluster",
+        "icon": "$(edit)"
+      },
+      {
         "command": "kubectl-control.openTerminal",
         "title": "Open Terminal"
+      },
+      {
+        "command": "kubectl-control.settingsMenu",
+        "title": "Settings",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "kubectl-control.quickSwitch",
+        "title": "Kubectl Control: Quick Switch Cluster"
+      },
+      {
+        "command": "kubectl-control.showLogs",
+        "title": "Kubectl Control: Debug-Logs anzeigen"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "kubectl-control.quickSwitch",
+        "key": "ctrl+shift+k",
+        "mac": "cmd+shift+k"
       }
     ],
     "viewsContainers": {
@@ -40,24 +85,35 @@
     "views": {
       "kubectl-control-explorer": [
         {
+          "type": "webview",
+          "id": "kubectl-control.connectionsView",
+          "name": "Connections"
+        },
+        {
           "id": "kubectl-control.clustersView",
-          "name": "Clusters"
+          "name": "Clusters",
+          "when": "kubectl-control.showClusters"
         }
       ]
     },
     "menus": {
       "view/title": [
         {
-          "command": "kubectl-control.addCluster",
-          "when": "view == kubectl-control.clustersView",
+          "command": "kubectl-control.settingsMenu",
+          "when": "view == kubectl-control.connectionsView",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
+          "command": "kubectl-control.editCluster",
+          "when": "view == kubectl-control.clustersView && viewItem == cluster",
+          "group": "inline@1"
+        },
+        {
           "command": "kubectl-control.deleteCluster",
-          "when": "view == kubectl-control.clustersView",
-          "group": "inline"
+          "when": "view == kubectl-control.clustersView && viewItem == cluster",
+          "group": "inline@2"
         }
       ]
     }
@@ -76,7 +132,7 @@
   "devDependencies": {
     "@types/glob": "^8.1.0",
     "@types/mocha": "^10.0.1",
-    "@types/node": "20.2.5",
+    "@types/node": "^22.19.21",
     "@types/uuid": "^10.0.0",
     "@types/vscode": "^1.80.0",
     "@typescript-eslint/eslint-plugin": "^5.59.8",
