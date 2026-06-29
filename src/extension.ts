@@ -14,7 +14,7 @@ export function activate(context: vscode.ExtensionContext) {
     const store = new ClusterStore(context);
     const lockService = new LockService(context.secrets);
     const terminalManager = new TerminalManager();
-    const treeProvider = new ClusterTreeDataProvider(store, terminalManager);
+    const treeProvider = new ClusterTreeDataProvider(store, terminalManager, lockService);
     const connectionsViewProvider = new ConnectionsViewProvider(
         context.extensionUri, store, lockService, () => treeProvider.refresh()
     );

@@ -1,10 +1,11 @@
 import * as vscode from 'vscode';
 import { ClusterStore, ClusterProfile } from './store';
 import { TerminalManager } from './terminalManager';
+import { LockService } from './lockService';
 
 // ── Tree node union type ──────────────────────────────────────────────────────
 
-export type ClusterTreeNode = ClusterGroupItem | ClusterTreeItem;
+export type ClusterTreeNode = ClusterGroupItem | ClusterTreeItem | LockedItem;
 
 // ── Group item ────────────────────────────────────────────────────────────────
 
@@ -59,6 +60,22 @@ export class ClusterTreeItem extends vscode.TreeItem {
     }
 }
 
+// ── Locked placeholder ────────────────────────────────────────────────────────
+
+export class LockedItem extends vscode.TreeItem {
+    constructor() {
+        super('Gesperrt', vscode.TreeItemCollapsibleState.None);
+        this.description = 'Passwort eingeben um fortzufahren';
+        this.tooltip = 'Klicken um das Passwort einzugeben';
+        this.iconPath = new vscode.ThemeIcon('lock');
+        this.contextValue = 'locked';
+        this.command = {
+            command: 'kubectl-control.connectionsView.focus',
+            title: 'Entsperren',
+        };
+    }
+}
+
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterTreeNode> {
@@ -68,8 +85,10 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
     constructor(
         private readonly store: ClusterStore,
         private readonly terminalManager: TerminalManager,
+        private readonly lockService: LockService,
     ) {
         terminalManager.onDidChange(() => this.refresh());
+        lockService.onStateChange(() => this.refresh());
     }
 
     refresh(): void {
@@ -84,6 +103,11 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
         // Children of a group
         if (element instanceof ClusterGroupItem) {
             return element.clusters.map(c => new ClusterTreeItem(c, this.terminalManager.isOpen(c.id)));
+        }
+
+        // Show lock placeholder when locked
+        if (await this.lockService.isEnabled() && !this.lockService.isUnlocked()) {
+            return [new LockedItem()];
         }
 
         // Root level: build group structure
