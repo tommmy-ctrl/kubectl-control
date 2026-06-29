@@ -5,6 +5,7 @@ import { registerCommands } from './commands';
 import { ConnectionsViewProvider } from './connectionsView';
 import { LockService } from './lockService';
 import { TerminalManager } from './terminalManager';
+import { GistSyncService } from './gistSync';
 import { isSetupDone, markSetupDone } from './setup';
 import { log } from './logger';
 
@@ -14,6 +15,7 @@ export function activate(context: vscode.ExtensionContext) {
     const store = new ClusterStore(context);
     const lockService = new LockService(context.secrets);
     const terminalManager = new TerminalManager();
+    const gistSync = new GistSyncService(store, context.secrets, context.globalState);
     const treeProvider = new ClusterTreeDataProvider(store, terminalManager, lockService);
     const connectionsViewProvider = new ConnectionsViewProvider(
         context.extensionUri, store, lockService, () => treeProvider.refresh()
@@ -30,9 +32,10 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(ConnectionsViewProvider.viewType, connectionsViewProvider),
         terminalManager,
+        gistSync,
     );
 
-    registerCommands(context, store, treeProvider, connectionsViewProvider, lockService, terminalManager);
+    registerCommands(context, store, treeProvider, connectionsViewProvider, lockService, terminalManager, gistSync);
     log.info('kubectl-control activated');
 }
 

@@ -6,6 +6,7 @@ import { LockService } from './lockService';
 import { TerminalManager } from './terminalManager';
 import { encryptData } from './crypto';
 import { importFile, promptSetPassword, resetSetup } from './setup';
+import { GistSyncService } from './gistSync';
 import { log } from './logger';
 
 export function registerCommands(
@@ -15,6 +16,7 @@ export function registerCommands(
     connectionsView: ConnectionsViewProvider,
     lockService: LockService,
     terminalManager: TerminalManager,
+    gistSync: GistSyncService,
 ) {
     const deleteClusterCmd = vscode.commands.registerCommand('kubectl-control.deleteCluster', async (item: ClusterTreeItem) => {
         if (!item) { return; }
@@ -71,15 +73,32 @@ export function registerCommands(
         log.show();
     });
 
+
     const settingsMenuCmd = vscode.commands.registerCommand('kubectl-control.settingsMenu', async () => {
         const lockEnabled = await lockService.isEnabled();
         const lockUnlocked = lockService.isUnlocked();
+        const syncEnabled = gistSync.isEnabled();
 
         const items: (vscode.QuickPickItem & { action: string })[] = [
             { label: '$(cloud-upload) Export (verschlüsselt)', description: 'Alle Verbindungen mit Passwort verschlüsselt exportieren', action: 'export' },
             { label: '$(cloud-download) Import', description: 'Verbindungen aus Datei importieren', action: 'import' },
-            { kind: vscode.QuickPickItemKind.Separator, label: '', action: '' },
+            { kind: vscode.QuickPickItemKind.Separator, label: 'GitHub Sync', action: '' },
         ];
+
+        if (syncEnabled) {
+            items.push(
+                { label: '$(sync) Jetzt synchronisieren', description: 'Verbindungen manuell zu GitHub hochladen', action: 'sync-now' },
+                { label: '$(cloud-download) Von GitHub wiederherstellen', description: 'Verbindungen von GitHub herunterladen', action: 'sync-restore' },
+                { label: '$(circle-slash) GitHub Sync deaktivieren', action: 'sync-disable' },
+            );
+        } else {
+            items.push(
+                { label: '$(github) GitHub Sync einrichten', description: 'Verbindungen automatisch in GitHub Gist synchronisieren', action: 'sync-setup' },
+                { label: '$(cloud-download) Von GitHub wiederherstellen', description: 'Verbindungen von einem anderen Gerät importieren', action: 'sync-restore' },
+            );
+        }
+
+        items.push({ kind: vscode.QuickPickItemKind.Separator, label: '', action: '' });
 
         if (lockEnabled) {
             items.push(
@@ -107,20 +126,27 @@ export function registerCommands(
         if (!pick) { return; }
 
         switch (pick.action) {
-            case 'export':    await handleExport(store); break;
-            case 'import':    await handleImport(store, treeProvider); break;
+            case 'export':       await handleExport(store); break;
+            case 'import':       await handleImport(store, treeProvider); break;
+            case 'sync-setup':   void gistSync.setupOrPush(); break;
+            case 'sync-now':     void gistSync.setupOrPush(); break;
+            case 'sync-restore': void gistSync.pull(); break;
+            case 'sync-disable': void gistSync.disable(); break;
             case 'lock-enable':  await promptSetPassword(lockService); break;
             case 'lock-change':  await handleChangePassword(lockService); break;
             case 'lock-disable': await handleDisableLock(lockService); break;
             case 'lock-now':     lockService.lock(); break;
             case 'logs':         log.show(); break;
-            case 'reset':     await handleReset(context, store, lockService, treeProvider, connectionsView); break;
+            case 'reset':        await handleReset(context, store, lockService, treeProvider, connectionsView); break;
         }
     });
 
     context.subscriptions.push(
         deleteClusterCmd, editClusterCmd, openTerminalCmd,
         quickSwitchCmd, showLogsCmd, settingsMenuCmd,
+        vscode.commands.registerCommand('kubectl-control.syncNow',     () => void gistSync.setupOrPush()),
+        vscode.commands.registerCommand('kubectl-control.syncRestore', () => void gistSync.pull()),
+        vscode.commands.registerCommand('kubectl-control.syncDisable', () => void gistSync.disable()),
     );
 }
 

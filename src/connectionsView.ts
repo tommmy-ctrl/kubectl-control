@@ -28,7 +28,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
 
     public resolveWebviewView(webviewView: vscode.WebviewView): void {
         this.view = webviewView;
-        this._lastRenderedMode = undefined; // reset on new view lifecycle
+        this._lastRenderedMode = undefined;
         webviewView.webview.options = { enableScripts: true, localResourceRoots: [this.extensionUri] };
 
         webviewView.webview.onDidReceiveMessage(async message => {
@@ -47,7 +47,9 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
             }
         });
 
-        void this.refresh();
+        // Small delay so VS Code can finish setting up the webview context
+        // before we set html — prevents the "service worker invalid state" error
+        setTimeout(() => void this.refresh(), 100);
     }
 
     public async refresh(): Promise<void> {

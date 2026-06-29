@@ -26,7 +26,10 @@ export interface AddClusterOptions {
 export class ClusterStore {
     private static readonly storageKey = 'kubectl-control.clusters';
 
-    constructor(private context: vscode.ExtensionContext) {}
+    private readonly _onDidChange = new vscode.EventEmitter<void>();
+    readonly onDidChange: vscode.Event<void> = this._onDidChange.event;
+
+    constructor(private readonly context: vscode.ExtensionContext) {}
 
     public async getClusters(): Promise<ClusterProfile[]> {
         const data = await this.context.secrets.get(ClusterStore.storageKey);
@@ -86,6 +89,7 @@ export class ClusterStore {
 
     public async clearAll(): Promise<void> {
         await this.context.secrets.delete(ClusterStore.storageKey);
+        this._onDidChange.fire();
         log.info('All clusters cleared');
     }
 
@@ -113,5 +117,6 @@ export class ClusterStore {
 
     private async save(clusters: ClusterProfile[]): Promise<void> {
         await this.context.secrets.store(ClusterStore.storageKey, JSON.stringify(clusters));
+        this._onDidChange.fire();
     }
 }

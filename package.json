@@ -64,6 +64,18 @@
       {
         "command": "kubectl-control.showLogs",
         "title": "Kubectl Control: Show Debug Logs"
+      },
+      {
+        "command": "kubectl-control.syncNow",
+        "title": "Kubectl Control: GitHub Sync – Jetzt synchronisieren"
+      },
+      {
+        "command": "kubectl-control.syncRestore",
+        "title": "Kubectl Control: GitHub Sync – Von GitHub wiederherstellen"
+      },
+      {
+        "command": "kubectl-control.syncDisable",
+        "title": "Kubectl Control: GitHub Sync – Deaktivieren"
       }
     ],
     "keybindings": [
