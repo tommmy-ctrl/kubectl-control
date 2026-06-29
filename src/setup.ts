@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import * as jsYaml from 'js-yaml';
 import { ClusterStore } from './store';
 import { LockService } from './lockService';
 import { decryptData, isEncryptedFile } from './crypto';
@@ -34,15 +35,15 @@ export async function importFile(
         let json: string;
         if (isEncryptedFile(parsed)) {
             const pwd = await vscode.window.showInputBox({
-                title: 'Importdatei entschlüsseln',
+                title: vscode.l10n.t('Importdatei entschlüsseln'),
                 password: true,
-                prompt: 'Passwort der Exportdatei eingeben'
+                prompt: vscode.l10n.t('Passwort der Exportdatei eingeben')
             });
             if (!pwd) { return; }
             try {
                 json = decryptData(parsed, pwd);
             } catch {
-                vscode.window.showErrorMessage('Falsches Passwort oder beschädigte Datei.');
+                vscode.window.showErrorMessage(vscode.l10n.t('Falsches Passwort oder beschädigte Datei.'));
                 return;
             }
         } else {
@@ -51,10 +52,54 @@ export async function importFile(
 
         const added = await store.importClusters(json);
         onImported();
-        vscode.window.showInformationMessage(`Import abgeschlossen – ${added} neue Verbindung(en) hinzugefügt.`);
+        vscode.window.showInformationMessage(vscode.l10n.t('Import abgeschlossen – {0} neue Verbindung(en) hinzugefügt.', added));
     } catch (e) {
-        vscode.window.showErrorMessage(`Import fehlgeschlagen: ${e}`);
+        vscode.window.showErrorMessage(vscode.l10n.t('Import fehlgeschlagen: {0}', String(e)));
     }
+}
+
+/**
+ * Builds a minimal single-context kubeconfig YAML that contains only the
+ * named context plus the cluster and user blocks it references.
+ * This prevents other contexts' credentials from leaking into a cluster's terminal.
+ */
+function buildMinimalKubeconfig(fullDoc: Record<string, unknown>, contextName: string): string {
+    const rawContexts = Array.isArray(fullDoc['contexts']) ? fullDoc['contexts'] : [];
+    const contextEntry = rawContexts.find(
+        (c): c is Record<string, unknown> =>
+            typeof c === 'object' && c !== null && (c as Record<string, unknown>)['name'] === contextName
+    );
+
+    const contextDetail =
+        contextEntry && typeof contextEntry['context'] === 'object' && contextEntry['context'] !== null
+            ? (contextEntry['context'] as Record<string, unknown>)
+            : {};
+
+    const clusterName = typeof contextDetail['cluster'] === 'string' ? contextDetail['cluster'] : '';
+    const userName = typeof contextDetail['user'] === 'string' ? contextDetail['user'] : '';
+
+    const rawClusters = Array.isArray(fullDoc['clusters']) ? fullDoc['clusters'] : [];
+    const matchedCluster = rawClusters.filter(
+        (c): c is Record<string, unknown> =>
+            typeof c === 'object' && c !== null && (c as Record<string, unknown>)['name'] === clusterName
+    );
+
+    const rawUsers = Array.isArray(fullDoc['users']) ? fullDoc['users'] : [];
+    const matchedUser = rawUsers.filter(
+        (u): u is Record<string, unknown> =>
+            typeof u === 'object' && u !== null && (u as Record<string, unknown>)['name'] === userName
+    );
+
+    const minimal = {
+        apiVersion: fullDoc['apiVersion'] ?? 'v1',
+        kind: 'Config',
+        'current-context': contextName,
+        contexts: contextEntry ? [contextEntry] : [],
+        clusters: matchedCluster,
+        users: matchedUser,
+    };
+
+    return jsYaml.dump(minimal, { noRefs: true });
 }
 
 export async function importFromLocalKubeconfig(
@@ -77,6 +122,9 @@ export async function importFromLocalKubeconfig(
         return { imported: 0, skipped: 0 };
     }
 
+    // Fix 3: parse the full doc so we can extract per-context minimal configs
+    const fullDoc = jsYaml.load(content) as Record<string, unknown>;
+
     const existing = await store.getClusters();
     const existingNames = new Set(existing.map(c => c.name));
 
@@ -88,9 +136,11 @@ export async function importFromLocalKubeconfig(
             skipped++;
             continue;
         }
+        // Build a minimal kubeconfig containing only this context's data
+        const minimalKubeconfigData = buildMinimalKubeconfig(fullDoc, ctx.name);
         await store.addCluster({
             name: ctx.name,
-            kubeconfigData: content,
+            kubeconfigData: minimalKubeconfigData,
             activeContext: ctx.name,
             namespace: ctx.namespace || 'default',
         });
@@ -110,33 +160,32 @@ export async function handleImportFromKubeconfig(
 ): Promise<void> {
     const { imported, skipped } = await importFromLocalKubeconfig(store, onImported);
     if (imported === 0 && skipped === 0) {
-        vscode.window.showInformationMessage('Keine Contexts in ~/.kube/config gefunden.');
+        vscode.window.showInformationMessage(vscode.l10n.t('Keine Contexts in ~/.kube/config gefunden.'));
     } else {
         vscode.window.showInformationMessage(
-            `${imported} Verbindung(en) aus ~/.kube/config importiert, ${skipped} bereits vorhanden.`
+            vscode.l10n.t('{0} Verbindung(en) aus ~/.kube/config importiert, {1} bereits vorhanden.', imported, skipped)
         );
     }
 }
 
 export async function promptSetPassword(lockService: LockService): Promise<boolean> {
     const pwd = await vscode.window.showInputBox({
-        title: 'Passwort festlegen',
+        title: vscode.l10n.t('Passwort festlegen'),
         password: true,
-        prompt: 'Mindestens 6 Zeichen',
-        validateInput: v => (!v || v.length < 6) ? 'Mindestens 6 Zeichen erforderlich' : undefined
+        prompt: vscode.l10n.t('Mindestens 6 Zeichen'),
+        validateInput: v => (!v || v.length < 6) ? vscode.l10n.t('Mindestens 6 Zeichen erforderlich') : undefined
     });
     if (!pwd) { return false; }
 
     const confirm = await vscode.window.showInputBox({
-        title: 'Passwort bestätigen',
+        title: vscode.l10n.t('Passwort bestätigen'),
         password: true,
-        prompt: 'Passwort wiederholen',
-        validateInput: v => v === pwd ? undefined : 'Passwörter stimmen nicht überein'
+        prompt: vscode.l10n.t('Passwort wiederholen'),
+        validateInput: v => v === pwd ? undefined : vscode.l10n.t('Passwörter stimmen nicht überein')
     });
     if (confirm !== pwd) { return false; }
 
     await lockService.enableLock(pwd);
-    vscode.window.showInformationMessage('Passwort-Schutz aktiviert.');
+    vscode.window.showInformationMessage(vscode.l10n.t('Passwort-Schutz aktiviert.'));
     return true;
 }
-

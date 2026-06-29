@@ -1,0 +1,77 @@
+name: Promote Beta → Prod
+
+# Manually promote the current `beta` branch to production:
+#   1. merge beta into main
+#   2. set the final (non-beta) version in package.json
+#   3. push main and the v<version> tag
+#
+# Pushing the tag triggers release.yml, which publishes to the Marketplace.
+#
+# IMPORTANT: tags pushed by the default GITHUB_TOKEN do NOT trigger other
+# workflows. Set a repo secret `RELEASE_PAT` (a fine-grained PAT with
+# contents:write) so the tag push triggers release.yml. See docs/RELEASE.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Final SemVer for production (e.g. 1.1.0 — without -beta)'
+        required: true
+        type: string
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Merge beta → main and tag release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Validate version input (no pre-release suffix)
+        run: |
+          case "${{ inputs.release_version }}" in
+            *-*) echo "::error::release_version must be a final version without '-' (got '${{ inputs.release_version }}')"; exit 1 ;;
+            [0-9]*.[0-9]*.[0-9]*) echo "OK" ;;
+            *) echo "::error::release_version must be SemVer X.Y.Z"; exit 1 ;;
+          esac
+
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge beta into main
+        run: |
+          git checkout main
+          git merge --no-ff origin/beta -m "chore(release): promote beta to prod v${{ inputs.release_version }}"
+
+      - name: Set production version
+        run: npm version ${{ inputs.release_version }} --no-git-tag-version
+
+      - name: Commit version bump
+        run: |
+          git commit -am "chore(release): v${{ inputs.release_version }}" || echo "no version change to commit"
+
+      - name: Push main
+        run: git push origin main
+
+      - name: Create and push tag
+        run: |
+          git tag v${{ inputs.release_version }}
+          git push origin v${{ inputs.release_version }}
+
+      - name: Reminder
+        run: |
+          echo "Tag v${{ inputs.release_version }} pushed."
+          echo "If release.yml did not start, RELEASE_PAT is likely not set — see docs/RELEASE.md."

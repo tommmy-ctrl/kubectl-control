@@ -1,20 +1,16 @@
 import * as vscode from 'vscode';
-import * as nodeCrypto from 'node:crypto';
 import { ClusterStore } from './store';
 import { log } from './logger';
+import { encryptData, decryptData, EncryptedFile } from './crypto';
 
-const GIST_ID_KEY    = 'kubectl-control.sync.gistId';
-const SYNC_PWD_KEY   = 'kubectl-control.sync.password';
-const GIST_FILENAME  = 'kubectl-control-sync.json';
-const GIST_DESC      = 'kubectl-control VS Code Extension Sync';
-const GITHUB_API     = 'https://api.github.com';
+const GIST_ID_KEY        = 'kubectl-control.sync.gistId';
+const SYNC_PWD_KEY       = 'kubectl-control.sync.password';
+const LOCAL_TIMESTAMP_KEY = 'kubectl-control.sync.localTimestamp';
+const GIST_FILENAME      = 'kubectl-control-sync.json';
+const GIST_DESC          = 'kubectl-control VS Code Extension Sync';
+const GITHUB_API         = 'https://api.github.com';
 
-interface GistPayload {
-    v: number;
-    salt: string;
-    iv: string;
-    tag: string;
-    data: string;
+interface GistPayload extends EncryptedFile {
     updatedAt?: number;
 }
 
@@ -22,13 +18,16 @@ export class GistSyncService implements vscode.Disposable {
     private _debounceTimer: ReturnType<typeof setTimeout> | undefined;
     private readonly _statusItem: vscode.StatusBarItem;
     private readonly _disposables: vscode.Disposable[] = [];
-    private _localTimestamp = 0;
+    private _localTimestamp: number;
+    private _syncing = false;
 
     constructor(
         private readonly store: ClusterStore,
         private readonly secrets: vscode.SecretStorage,
         private readonly globalState: vscode.Memento,
     ) {
+        this._localTimestamp = this.globalState.get<number>(LOCAL_TIMESTAMP_KEY) ?? 0;
+
         this._statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
         this._statusItem.command = 'kubectl-control.syncNow';
         this._disposables.push(this._statusItem);
@@ -49,6 +48,7 @@ export class GistSyncService implements vscode.Disposable {
     }
 
     private async pushSilent(): Promise<void> {
+        if (this._syncing) { return; }
         const password = await this.secrets.get(SYNC_PWD_KEY);
         if (!password) { return; }
         await this.doPush(password);
@@ -58,16 +58,18 @@ export class GistSyncService implements vscode.Disposable {
 
     /** First-time setup or explicit push (shows password prompt if needed). */
     async setupOrPush(): Promise<void> {
+        if (this._syncing) { return; }
         const password = await this.getOrAskPassword();
         if (!password) { return; }
         await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: 'GitHub Sync: Verbindungen werden hochgeladen…' },
+            { location: vscode.ProgressLocation.Notification, title: vscode.l10n.t('GitHub Sync: Verbindungen werden hochgeladen…') },
             () => this.doPush(password),
         );
     }
 
     /** Pull from Gist — used to restore on a new device. */
     async pull(): Promise<void> {
+        if (this._syncing) { return; }
         const token = await this.getGitHubToken();
         if (!token) { return; }
 
@@ -76,7 +78,7 @@ export class GistSyncService implements vscode.Disposable {
         if (!gistId) {
             gistId = await this.findGist(token);
             if (!gistId) {
-                vscode.window.showInformationMessage('Kein kubectl-control Sync-Gist in deinem GitHub-Account gefunden.');
+                vscode.window.showInformationMessage(vscode.l10n.t('Kein kubectl-control Sync-Gist in deinem GitHub-Account gefunden.'));
                 return;
             }
             await this.globalState.update(GIST_ID_KEY, gistId);
@@ -86,27 +88,34 @@ export class GistSyncService implements vscode.Disposable {
         const password = await this.getOrAskPassword();
         if (!password) { return; }
 
-        await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: 'GitHub Sync: Verbindungen werden wiederhergestellt…' },
-            async () => {
-                try {
-                    const payload = await this.fetchGist(token, gistId!);
-                    const json    = this.decrypt(payload, password);
-                    const count   = await this.store.importClusters(json);
-                    this._localTimestamp = Date.now();
-                    log.info(`GitHub Sync: pull successful — ${count} Verbindung(en) importiert`);
-                    vscode.window.showInformationMessage(`GitHub Sync: ${count} Verbindung(en) erfolgreich wiederhergestellt.`);
-                } catch (e) {
-                    log.error('GitHub Sync: pull failed', e);
-                    const msg = e instanceof Error ? e.message : String(e);
-                    if (msg.includes('auth') || msg.includes('tag')) {
-                        vscode.window.showErrorMessage('Sync-Passwort falsch oder Daten beschädigt.');
-                    } else {
-                        vscode.window.showErrorMessage(`GitHub Sync fehlgeschlagen: ${msg}`);
+        this._syncing = true;
+        try {
+            await vscode.window.withProgress(
+                { location: vscode.ProgressLocation.Notification, title: vscode.l10n.t('GitHub Sync: Verbindungen werden wiederhergestellt…') },
+                async () => {
+                    try {
+                        const payload = await this.fetchGist(token, gistId);
+                        const json    = decryptData(payload, password);
+                        const count   = await this.store.importClusters(json);
+                        const now     = Date.now();
+                        this._localTimestamp = now;
+                        await this.globalState.update(LOCAL_TIMESTAMP_KEY, now);
+                        log.info(`GitHub Sync: pull successful — ${count} Verbindung(en) importiert`);
+                        vscode.window.showInformationMessage(vscode.l10n.t('GitHub Sync: {0} Verbindung(en) erfolgreich wiederhergestellt.', count));
+                    } catch (e) {
+                        log.error('GitHub Sync: pull failed', e);
+                        const msg = e instanceof Error ? e.message : String(e);
+                        if (msg.includes('auth') || msg.includes('tag')) {
+                            vscode.window.showErrorMessage(vscode.l10n.t('Sync-Passwort falsch oder Daten beschädigt.'));
+                        } else {
+                            vscode.window.showErrorMessage(vscode.l10n.t('GitHub Sync fehlgeschlagen: {0}', msg));
+                        }
                     }
-                }
-            },
-        );
+                },
+            );
+        } finally {
+            this._syncing = false;
+        }
     }
 
     /** Remove all sync configuration from this device. */
@@ -115,7 +124,7 @@ export class GistSyncService implements vscode.Disposable {
         await this.secrets.delete(SYNC_PWD_KEY);
         await this.refreshStatusBar();
         log.info('GitHub Sync deactivated');
-        vscode.window.showInformationMessage('GitHub Sync wurde deaktiviert.');
+        vscode.window.showInformationMessage(vscode.l10n.t('GitHub Sync wurde deaktiviert.'));
     }
 
     isEnabled(): boolean {
@@ -125,6 +134,7 @@ export class GistSyncService implements vscode.Disposable {
     // ── Internal helpers ─────────────────────────────────────────────────────
 
     private async doPush(password: string): Promise<void> {
+        this._syncing = true;
         try {
             const token = await this.getGitHubToken();
             if (!token) { return; }
@@ -136,16 +146,20 @@ export class GistSyncService implements vscode.Disposable {
                 try {
                     const remotePayload = await this.fetchGist(token, gistId);
                     if ((remotePayload.updatedAt ?? 0) > this._localTimestamp) {
+                        const btnLokal = vscode.l10n.t('Lokale Daten hochladen');
+                        const btnRemote = vscode.l10n.t('Remote-Daten herunterladen');
                         const choice = await vscode.window.showWarningMessage(
-                            'GitHub Sync: Auf einem anderen Gerät wurden neuere Daten gefunden. Was möchtest du tun?',
+                            vscode.l10n.t('GitHub Sync: Auf einem anderen Gerät wurden neuere Daten gefunden. Was möchtest du tun?'),
                             { modal: true },
-                            'Lokale Daten hochladen',
-                            'Remote-Daten herunterladen',
+                            btnLokal,
+                            btnRemote,
                         );
-                        if (choice === 'Remote-Daten herunterladen') {
+                        if (choice === btnRemote) {
+                            // Release the lock before delegating to pull()
+                            this._syncing = false;
                             await this.pull();
                             return;
-                        } else if (choice !== 'Lokale Daten hochladen') {
+                        } else if (choice !== btnLokal) {
                             return; // dismissed
                         }
                         // 'Lokale Daten hochladen' — fall through to push
@@ -158,7 +172,7 @@ export class GistSyncService implements vscode.Disposable {
 
             const now     = Date.now();
             const json    = await this.store.exportClusters();
-            const payload = this.encrypt(json, password, now);
+            const payload: GistPayload = { ...encryptData(json, password), updatedAt: now };
 
             if (gistId) {
                 await this.updateGist(token, gistId, payload);
@@ -166,20 +180,23 @@ export class GistSyncService implements vscode.Disposable {
                 const newGistId = await this.createGist(token, payload);
                 await this.globalState.update(GIST_ID_KEY, newGistId);
                 await this.refreshStatusBar();
-                vscode.window.showInformationMessage('GitHub Sync eingerichtet. Verbindungen werden ab jetzt automatisch synchronisiert.');
+                vscode.window.showInformationMessage(vscode.l10n.t('GitHub Sync eingerichtet. Verbindungen werden ab jetzt automatisch synchronisiert.'));
             }
 
             this._localTimestamp = now;
+            await this.globalState.update(LOCAL_TIMESTAMP_KEY, now);
             log.info('GitHub Sync: push successful');
             this._statusItem.text    = '$(check) Sync';
-            this._statusItem.tooltip = 'Letzter Sync erfolgreich';
+            this._statusItem.tooltip = vscode.l10n.t('Letzter Sync erfolgreich');
             setTimeout(() => void this.refreshStatusBar(), 4000);
         } catch (e) {
             log.error('GitHub Sync: push failed', e);
             this._statusItem.text    = '$(error) Sync';
-            this._statusItem.tooltip = `Sync fehlgeschlagen: ${e}`;
-            vscode.window.showErrorMessage(`GitHub Sync fehlgeschlagen: ${e}`);
+            this._statusItem.tooltip = vscode.l10n.t('Sync fehlgeschlagen: {0}', String(e));
+            vscode.window.showErrorMessage(vscode.l10n.t('GitHub Sync fehlgeschlagen: {0}', String(e)));
             setTimeout(() => void this.refreshStatusBar(), 6000);
+        } finally {
+            this._syncing = false;
         }
     }
 
@@ -188,10 +205,10 @@ export class GistSyncService implements vscode.Disposable {
         if (stored) { return stored; }
 
         const password = await vscode.window.showInputBox({
-            title: 'GitHub Sync – Passwort festlegen',
-            prompt: 'Dieses Passwort verschlüsselt deine Verbindungsdaten (min. 4 Zeichen). Merke es dir — es wird auf jedem Gerät einmalig abgefragt.',
+            title: vscode.l10n.t('GitHub Sync – Passwort festlegen'),
+            prompt: vscode.l10n.t('Dieses Passwort verschlüsselt deine Verbindungsdaten (min. 12 Zeichen). Merke es dir — es wird auf jedem Gerät einmalig abgefragt.'),
             password: true,
-            validateInput: v => (!v || v.length < 4) ? 'Mindestens 4 Zeichen' : undefined,
+            validateInput: v => (!v || v.length < 12) ? vscode.l10n.t('Mindestens 12 Zeichen') : undefined,
         });
         if (!password) { return undefined; }
 
@@ -205,36 +222,9 @@ export class GistSyncService implements vscode.Disposable {
             return session.accessToken;
         } catch (e) {
             log.warn('GitHub auth failed', e);
-            vscode.window.showErrorMessage('GitHub-Anmeldung fehlgeschlagen. Bitte erneut versuchen.');
+            vscode.window.showErrorMessage(vscode.l10n.t('GitHub-Anmeldung fehlgeschlagen. Bitte erneut versuchen.'));
             return undefined;
         }
-    }
-
-    // ── Encryption ────────────────────────────────────────────────────────────
-
-    private encrypt(plaintext: string, password: string, timestamp = Date.now()): GistPayload {
-        const salt      = nodeCrypto.randomBytes(32);
-        const key       = nodeCrypto.pbkdf2Sync(password, salt, 200_000, 32, 'sha256');
-        const iv        = nodeCrypto.randomBytes(12);
-        const cipher    = nodeCrypto.createCipheriv('aes-256-gcm', key, iv);
-        const encrypted = Buffer.concat([cipher.update(plaintext, 'utf-8'), cipher.final()]);
-        return {
-            v:         1,
-            salt:      salt.toString('hex'),
-            iv:        iv.toString('hex'),
-            tag:       cipher.getAuthTag().toString('hex'),
-            data:      encrypted.toString('hex'),
-            updatedAt: timestamp,
-        };
-    }
-
-    private decrypt(payload: GistPayload, password: string): string {
-        if (payload.v !== 1) { throw new Error('Unbekannte Sync-Version'); }
-        const salt     = Buffer.from(payload.salt, 'hex');
-        const key      = nodeCrypto.pbkdf2Sync(password, salt, 200_000, 32, 'sha256');
-        const decipher = nodeCrypto.createDecipheriv('aes-256-gcm', key, Buffer.from(payload.iv, 'hex'));
-        decipher.setAuthTag(Buffer.from(payload.tag, 'hex'));
-        return decipher.update(Buffer.from(payload.data, 'hex')).toString('utf-8') + decipher.final('utf-8');
     }
 
     // ── GitHub Gist API ───────────────────────────────────────────────────────
@@ -299,7 +289,7 @@ export class GistSyncService implements vscode.Disposable {
         const gistId = this.globalState.get<string>(GIST_ID_KEY);
         if (gistId) {
             this._statusItem.text    = '$(sync) Sync';
-            this._statusItem.tooltip = 'kubectl-control GitHub Sync aktiv — klicken zum manuellen Sync';
+            this._statusItem.tooltip = vscode.l10n.t('kubectl-control GitHub Sync aktiv — klicken zum manuellen Sync');
             this._statusItem.show();
         } else {
             this._statusItem.hide();

@@ -7,10 +7,13 @@ node_modules/**
 .vscode/**
 .vscode-test/**
 .github/**
+docs/**
 webpack.config.js
 tsconfig.json
 .eslintrc.json
+eslint.config.js
 .eslintignore
+CLAUDE.md
 .gitignore
 .yarnrc
 .npmrc

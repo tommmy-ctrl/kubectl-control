@@ -8,6 +8,7 @@ import { encryptData } from './crypto';
 import { importFile, promptSetPassword, resetSetup, handleImportFromKubeconfig } from './setup';
 import { GistSyncService } from './gistSync';
 import { log } from './logger';
+import { fetchNamespaces, FALLBACK_NAMESPACES } from './features/namespaceBrowser';
 
 export function registerCommands(
     context: vscode.ExtensionContext,
@@ -22,19 +23,20 @@ export function registerCommands(
         if (!await lockService.isEnabled()) { lockService.recordActivity(); return true; }
         if (lockService.isUnlocked()) { lockService.recordActivity(); return true; }
         await vscode.commands.executeCommand('kubectl-control.connectionsView.focus');
-        vscode.window.showWarningMessage('Kubectl Control ist gesperrt. Bitte zuerst entsperren.');
+        vscode.window.showWarningMessage(vscode.l10n.t('Kubectl Control ist gesperrt. Bitte zuerst entsperren.'));
         return false;
     };
 
     const deleteClusterCmd = vscode.commands.registerCommand('kubectl-control.deleteCluster', async (item: ClusterTreeItem) => {
         if (!item) { return; }
         if (!await assertUnlocked()) { return; }
+        const btnDelete = vscode.l10n.t('Löschen');
         const confirm = await vscode.window.showWarningMessage(
-            `Cluster '${item.profile.name}' wirklich löschen?`,
+            vscode.l10n.t("Cluster '{0}' wirklich löschen?", item.profile.name),
             { modal: true },
-            'Löschen'
+            btnDelete
         );
-        if (confirm === 'Löschen') {
+        if (confirm === btnDelete) {
             await store.deleteCluster(item.profile.id);
             treeProvider.refresh();
         }
@@ -64,18 +66,18 @@ export function registerCommands(
         if (!await assertUnlocked()) { return; }
         const clusters = await store.getClusters();
         if (clusters.length === 0) {
-            vscode.window.showInformationMessage('Keine gespeicherten Verbindungen vorhanden.');
+            vscode.window.showInformationMessage(vscode.l10n.t('Keine gespeicherten Verbindungen vorhanden.'));
             return;
         }
         const items = clusters.map(c => ({
             label: terminalManager.isOpen(c.id) ? `$(terminal) ${c.name}` : `$(server-environment) ${c.name}`,
             description: [c.group, c.namespace].filter(Boolean).join('  ·  '),
-            detail: terminalManager.isOpen(c.id) ? 'Terminal bereits geöffnet – wird fokussiert' : undefined,
+            detail: terminalManager.isOpen(c.id) ? vscode.l10n.t('Terminal bereits geöffnet – wird fokussiert') : undefined,
             cluster: c,
         }));
         const pick = await vscode.window.showQuickPick(items, {
-            title: 'Kubectl Control – Quick Switch',
-            placeHolder: 'Cluster auswählen…',
+            title: vscode.l10n.t('Kubectl Control – Quick Switch'),
+            placeHolder: vscode.l10n.t('Cluster auswählen…'),
             matchOnDescription: true,
         });
         if (pick) { await terminalManager.openOrFocus(pick.cluster); }
@@ -89,7 +91,7 @@ export function registerCommands(
         if (!await assertUnlocked()) { return; }
         const clusters = await store.getClusters();
         if (clusters.length === 0) {
-            vscode.window.showInformationMessage('Keine gespeicherten Verbindungen vorhanden.');
+            vscode.window.showInformationMessage(vscode.l10n.t('Keine gespeicherten Verbindungen vorhanden.'));
             return;
         }
         const clusterItems = clusters.map(c => ({
@@ -98,35 +100,44 @@ export function registerCommands(
             cluster: c,
         }));
         const clusterPick = await vscode.window.showQuickPick(clusterItems, {
-            title: 'Kubectl Control – Namespace wechseln: Cluster wählen',
-            placeHolder: 'Cluster auswählen…',
+            title: vscode.l10n.t('Kubectl Control – Namespace wechseln: Cluster wählen'),
+            placeHolder: vscode.l10n.t('Cluster auswählen…'),
             matchOnDescription: true,
         });
         if (!clusterPick) { return; }
 
         const cluster = clusterPick.cluster;
         const currentNs = cluster.namespace ?? 'default';
-        const suggestions = ['default', 'kube-system', 'kube-public'];
-        if (!suggestions.includes(currentNs)) {
-            suggestions.unshift(currentNs);
-        }
+
+        const liveNamespaces = await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: vscode.l10n.t('Namespaces werden geladen…'), cancellable: false },
+            () => fetchNamespaces(cluster),
+        );
+        const baseList = liveNamespaces.length > 0 ? liveNamespaces : FALLBACK_NAMESPACES;
+        const suggestions = baseList.includes(currentNs) ? baseList : [currentNs, ...baseList];
+
         const nsItems = suggestions.map(ns => ({
             label: ns,
-            description: ns === currentNs ? '(aktuell)' : undefined,
+            description: ns === currentNs ? vscode.l10n.t('(aktuell)') : undefined,
         }));
         const nsPick = await vscode.window.showQuickPick(nsItems, {
-            title: `Namespace für "${cluster.name}" wählen`,
+            title: vscode.l10n.t('Namespace für "{0}" wählen', cluster.name),
             placeHolder: currentNs,
             canPickMany: false,
         });
         if (!nsPick) { return; }
 
         const chosenNamespace = nsPick.label;
+        const nsRegex = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
+        if (!nsRegex.test(chosenNamespace) || chosenNamespace.length > 63) {
+            vscode.window.showErrorMessage(vscode.l10n.t('Ungültiger Namespace-Name: "{0}". Nur Kleinbuchstaben, Ziffern und Bindestriche erlaubt (max. 63 Zeichen).', chosenNamespace));
+            return;
+        }
         await store.updateCluster(cluster.id, { namespace: chosenNamespace });
         if (terminalManager.isOpen(cluster.id)) {
             terminalManager.sendToTerminal(cluster.id, `kubectl config set-context --current --namespace=${chosenNamespace}`);
         }
-        vscode.window.showInformationMessage(`Namespace für "${cluster.name}" auf "${chosenNamespace}" gesetzt.`);
+        vscode.window.showInformationMessage(vscode.l10n.t('Namespace für "{0}" auf "{1}" gesetzt.', cluster.name, chosenNamespace));
         treeProvider.refresh();
     });
 
@@ -136,9 +147,9 @@ export function registerCommands(
         await store.updateCluster(item.profile.id, { pinned: newPinned });
         treeProvider.refresh();
         if (newPinned) {
-            vscode.window.showInformationMessage(`"${item.profile.name}" angepinnt.`);
+            vscode.window.showInformationMessage(vscode.l10n.t('"{0}" angepinnt.', item.profile.name));
         } else {
-            vscode.window.showInformationMessage(`"${item.profile.name}" losgelöst.`);
+            vscode.window.showInformationMessage(vscode.l10n.t('"{0}" losgelöst.', item.profile.name));
         }
     });
 
@@ -148,9 +159,9 @@ export function registerCommands(
         await store.updateCluster(item.profile.id, { isProd: newIsProd });
         treeProvider.refresh();
         if (newIsProd) {
-            vscode.window.showInformationMessage(`"${item.profile.name}" als Produktionsumgebung markiert.`);
+            vscode.window.showInformationMessage(vscode.l10n.t('"{0}" als Produktionsumgebung markiert.', item.profile.name));
         } else {
-            vscode.window.showInformationMessage(`"${item.profile.name}" Markierung entfernt.`);
+            vscode.window.showInformationMessage(vscode.l10n.t('"{0}" Markierung entfernt.', item.profile.name));
         }
     });
 
@@ -161,22 +172,22 @@ export function registerCommands(
         const syncEnabled = gistSync.isEnabled();
 
         const items: (vscode.QuickPickItem & { action: string })[] = [
-            { label: '$(cloud-upload) Export (verschlüsselt)', description: 'Alle Verbindungen mit Passwort verschlüsselt exportieren', action: 'export' },
-            { label: '$(cloud-download) Import', description: 'Verbindungen aus Datei importieren', action: 'import' },
-            { label: '$(folder) Aus ~/.kube/config importieren', description: 'Lokale kubectl-Contexts übernehmen', action: 'import-kubeconfig' },
+            { label: vscode.l10n.t('$(cloud-upload) Export (verschlüsselt)'), description: vscode.l10n.t('Alle Verbindungen mit Passwort verschlüsselt exportieren'), action: 'export' },
+            { label: vscode.l10n.t('$(cloud-download) Import'), description: vscode.l10n.t('Verbindungen aus Datei importieren'), action: 'import' },
+            { label: vscode.l10n.t('$(folder) Aus ~/.kube/config importieren'), description: vscode.l10n.t('Lokale kubectl-Contexts übernehmen'), action: 'import-kubeconfig' },
             { kind: vscode.QuickPickItemKind.Separator, label: 'GitHub Sync', action: '' },
         ];
 
         if (syncEnabled) {
             items.push(
-                { label: '$(sync) Jetzt synchronisieren', description: 'Verbindungen manuell zu GitHub hochladen', action: 'sync-now' },
-                { label: '$(cloud-download) Von GitHub wiederherstellen', description: 'Verbindungen von GitHub herunterladen', action: 'sync-restore' },
-                { label: '$(circle-slash) GitHub Sync deaktivieren', action: 'sync-disable' },
+                { label: vscode.l10n.t('$(sync) Jetzt synchronisieren'), description: vscode.l10n.t('Verbindungen manuell zu GitHub hochladen'), action: 'sync-now' },
+                { label: vscode.l10n.t('$(cloud-download) Von GitHub wiederherstellen'), description: vscode.l10n.t('Verbindungen von GitHub herunterladen'), action: 'sync-restore' },
+                { label: vscode.l10n.t('$(circle-slash) GitHub Sync deaktivieren'), action: 'sync-disable' },
             );
         } else {
             items.push(
-                { label: '$(github) GitHub Sync einrichten', description: 'Verbindungen automatisch in GitHub Gist synchronisieren', action: 'sync-setup' },
-                { label: '$(cloud-download) Von GitHub wiederherstellen', description: 'Verbindungen von einem anderen Gerät importieren', action: 'sync-restore' },
+                { label: vscode.l10n.t('$(github) GitHub Sync einrichten'), description: vscode.l10n.t('Verbindungen automatisch in GitHub Gist synchronisieren'), action: 'sync-setup' },
+                { label: vscode.l10n.t('$(cloud-download) Von GitHub wiederherstellen'), description: vscode.l10n.t('Verbindungen von einem anderen Gerät importieren'), action: 'sync-restore' },
             );
         }
 
@@ -184,28 +195,28 @@ export function registerCommands(
 
         if (lockEnabled) {
             items.push(
-                { label: '$(key) Passwort ändern', action: 'lock-change' },
-                { label: '$(unlock) Passwort-Schutz deaktivieren', action: 'lock-disable' },
+                { label: vscode.l10n.t('$(key) Passwort ändern'), action: 'lock-change' },
+                { label: vscode.l10n.t('$(unlock) Passwort-Schutz deaktivieren'), action: 'lock-disable' },
                 { kind: vscode.QuickPickItemKind.Separator, label: '', action: '' }
             );
             if (lockUnlocked) {
-                items.push({ label: '$(lock) Erweiterung sperren', action: 'lock-now' });
+                items.push({ label: vscode.l10n.t('$(lock) Erweiterung sperren'), action: 'lock-now' });
             }
         } else {
-            items.push({ label: '$(lock) Passwort-Schutz aktivieren', description: 'Erweiterung beim Öffnen sperren', action: 'lock-enable' });
+            items.push({ label: vscode.l10n.t('$(lock) Passwort-Schutz aktivieren'), description: vscode.l10n.t('Erweiterung beim Öffnen sperren'), action: 'lock-enable' });
         }
 
         items.push(
-            { kind: vscode.QuickPickItemKind.Separator, label: 'Cluster', action: '' },
-            { label: '$(symbol-namespace) Namespace wechseln', description: 'Namespace für einen Cluster ändern', action: 'switch-namespace' },
+            { kind: vscode.QuickPickItemKind.Separator, label: vscode.l10n.t('Cluster'), action: '' },
+            { label: vscode.l10n.t('$(symbol-namespace) Namespace wechseln'), description: vscode.l10n.t('Namespace für einen Cluster ändern'), action: 'switch-namespace' },
             { kind: vscode.QuickPickItemKind.Separator, label: '', action: '' },
-            { label: '$(output) Debug-Logs anzeigen', description: 'Output-Panel mit Logs öffnen', action: 'logs' },
-            { label: '$(trash) Anwendung zurücksetzen', description: 'Alle Verbindungen und Einstellungen löschen', action: 'reset' }
+            { label: vscode.l10n.t('$(output) Debug-Logs anzeigen'), description: vscode.l10n.t('Output-Panel mit Logs öffnen'), action: 'logs' },
+            { label: vscode.l10n.t('$(trash) Anwendung zurücksetzen'), description: vscode.l10n.t('Alle Verbindungen und Einstellungen löschen'), action: 'reset' }
         );
 
         const pick = await vscode.window.showQuickPick(items, {
-            title: 'Kubectl Control – Einstellungen',
-            placeHolder: 'Aktion wählen'
+            title: vscode.l10n.t('Kubectl Control – Einstellungen'),
+            placeHolder: vscode.l10n.t('Aktion wählen')
         });
         if (!pick) { return; }
 
@@ -213,10 +224,10 @@ export function registerCommands(
             case 'export':            await handleExport(store); break;
             case 'import':            await handleImport(store, treeProvider); break;
             case 'import-kubeconfig': await handleImportFromKubeconfig(store, () => treeProvider.refresh()); break;
-            case 'sync-setup':   void gistSync.setupOrPush(); break;
-            case 'sync-now':     void gistSync.setupOrPush(); break;
-            case 'sync-restore': void gistSync.pull(); break;
-            case 'sync-disable': void gistSync.disable(); break;
+            case 'sync-setup':   void gistSync.setupOrPush().catch(e => log.error(`sync-setup failed: ${e}`)); break;
+            case 'sync-now':     void gistSync.setupOrPush().catch(e => log.error(`sync-now failed: ${e}`)); break;
+            case 'sync-restore': void gistSync.pull().catch(e => log.error(`sync-restore failed: ${e}`)); break;
+            case 'sync-disable': void gistSync.disable().catch(e => log.error(`sync-disable failed: ${e}`)); break;
             case 'lock-enable':  await promptSetPassword(lockService); break;
             case 'lock-change':  await handleChangePassword(lockService); break;
             case 'lock-disable': await handleDisableLock(lockService); break;
@@ -231,26 +242,26 @@ export function registerCommands(
         deleteClusterCmd, editClusterCmd, openTerminalCmd,
         quickSwitchCmd, showLogsCmd, settingsMenuCmd,
         switchNamespaceCmd, togglePinCmd, toggleProdCmd,
-        vscode.commands.registerCommand('kubectl-control.syncNow',     () => void gistSync.setupOrPush()),
-        vscode.commands.registerCommand('kubectl-control.syncRestore', () => void gistSync.pull()),
-        vscode.commands.registerCommand('kubectl-control.syncDisable', () => void gistSync.disable()),
+        vscode.commands.registerCommand('kubectl-control.syncNow',     () => void gistSync.setupOrPush().catch(e => log.error(`syncNow failed: ${e}`))),
+        vscode.commands.registerCommand('kubectl-control.syncRestore', () => void gistSync.pull().catch(e => log.error(`syncRestore failed: ${e}`))),
+        vscode.commands.registerCommand('kubectl-control.syncDisable', () => void gistSync.disable().catch(e => log.error(`syncDisable failed: ${e}`))),
     );
 }
 
 async function handleExport(store: ClusterStore): Promise<void> {
     const password = await vscode.window.showInputBox({
-        title: 'Export-Passwort festlegen',
+        title: vscode.l10n.t('Export-Passwort festlegen'),
         password: true,
-        prompt: 'Passwort zum Verschlüsseln der Exportdatei (min. 6 Zeichen)',
-        validateInput: v => (!v || v.length < 6) ? 'Mindestens 6 Zeichen erforderlich' : undefined
+        prompt: vscode.l10n.t('Passwort zum Verschlüsseln der Exportdatei (min. 6 Zeichen)'),
+        validateInput: v => (!v || v.length < 6) ? vscode.l10n.t('Mindestens 6 Zeichen erforderlich') : undefined
     });
     if (password === undefined) { return; }
 
     const confirm = await vscode.window.showInputBox({
-        title: 'Passwort bestätigen',
+        title: vscode.l10n.t('Passwort bestätigen'),
         password: true,
-        prompt: 'Passwort wiederholen',
-        validateInput: v => v === password ? undefined : 'Passwörter stimmen nicht überein'
+        prompt: vscode.l10n.t('Passwort wiederholen'),
+        validateInput: v => v === password ? undefined : vscode.l10n.t('Passwörter stimmen nicht überein')
     });
     if (confirm !== password) { return; }
 
@@ -265,7 +276,7 @@ async function handleExport(store: ClusterStore): Promise<void> {
 
     await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(JSON.stringify(encrypted, null, 2)));
     log.info(`Clusters exported to ${uri.fsPath}`);
-    vscode.window.showInformationMessage('Export erfolgreich gespeichert (verschlüsselt).');
+    vscode.window.showInformationMessage(vscode.l10n.t('Export erfolgreich gespeichert (verschlüsselt).'));
 }
 
 async function handleImport(store: ClusterStore, treeProvider: ClusterTreeDataProvider): Promise<void> {
@@ -275,45 +286,45 @@ async function handleImport(store: ClusterStore, treeProvider: ClusterTreeDataPr
 }
 
 async function handleChangePassword(lockService: LockService): Promise<void> {
-    const oldPwd = await vscode.window.showInputBox({ title: 'Altes Passwort', password: true, prompt: 'Aktuelles Passwort eingeben' });
+    const oldPwd = await vscode.window.showInputBox({ title: vscode.l10n.t('Altes Passwort'), password: true, prompt: vscode.l10n.t('Aktuelles Passwort eingeben') });
     if (!oldPwd) { return; }
 
     const newPwd = await vscode.window.showInputBox({
-        title: 'Neues Passwort',
+        title: vscode.l10n.t('Neues Passwort'),
         password: true,
-        prompt: 'Neues Passwort (min. 6 Zeichen)',
-        validateInput: v => (!v || v.length < 6) ? 'Mindestens 6 Zeichen erforderlich' : undefined
+        prompt: vscode.l10n.t('Neues Passwort (min. 6 Zeichen)'),
+        validateInput: v => (!v || v.length < 6) ? vscode.l10n.t('Mindestens 6 Zeichen erforderlich') : undefined
     });
     if (newPwd === undefined) { return; }
 
     const confirm = await vscode.window.showInputBox({
-        title: 'Neues Passwort bestätigen',
+        title: vscode.l10n.t('Neues Passwort bestätigen'),
         password: true,
-        validateInput: v => v === newPwd ? undefined : 'Passwörter stimmen nicht überein'
+        validateInput: v => v === newPwd ? undefined : vscode.l10n.t('Passwörter stimmen nicht überein')
     });
     if (confirm !== newPwd) { return; }
 
     const ok = await lockService.changePassword(oldPwd, newPwd);
     if (ok) {
-        vscode.window.showInformationMessage('Passwort erfolgreich geändert.');
+        vscode.window.showInformationMessage(vscode.l10n.t('Passwort erfolgreich geändert.'));
     } else {
-        vscode.window.showErrorMessage('Altes Passwort ist falsch.');
+        vscode.window.showErrorMessage(vscode.l10n.t('Altes Passwort ist falsch.'));
     }
 }
 
 async function handleDisableLock(lockService: LockService): Promise<void> {
     const pwd = await vscode.window.showInputBox({
-        title: 'Passwort-Schutz deaktivieren',
+        title: vscode.l10n.t('Passwort-Schutz deaktivieren'),
         password: true,
-        prompt: 'Aktuelles Passwort zur Bestätigung eingeben'
+        prompt: vscode.l10n.t('Aktuelles Passwort zur Bestätigung eingeben')
     });
     if (!pwd) { return; }
 
     const ok = await lockService.disableLock(pwd);
     if (ok) {
-        vscode.window.showInformationMessage('Passwort-Schutz deaktiviert.');
+        vscode.window.showInformationMessage(vscode.l10n.t('Passwort-Schutz deaktiviert.'));
     } else {
-        vscode.window.showErrorMessage('Falsches Passwort.');
+        vscode.window.showErrorMessage(vscode.l10n.t('Falsches Passwort.'));
     }
 }
 
@@ -324,18 +335,20 @@ async function handleReset(
     treeProvider: ClusterTreeDataProvider,
     connectionsView: ConnectionsViewProvider
 ): Promise<void> {
+    const btnWeiter = vscode.l10n.t('Weiter');
     const first = await vscode.window.showWarningMessage(
-        'Anwendung zurücksetzen? Alle gespeicherten Verbindungen und Einstellungen werden gelöscht.',
-        'Weiter'
+        vscode.l10n.t('Anwendung zurücksetzen? Alle gespeicherten Verbindungen und Einstellungen werden gelöscht.'),
+        btnWeiter
     );
-    if (first !== 'Weiter') { return; }
+    if (first !== btnWeiter) { return; }
 
+    const btnJaAllesLoeschen = vscode.l10n.t('Ja, alles löschen');
     const second = await vscode.window.showWarningMessage(
-        'Bist du sicher? Diese Aktion kann nicht rückgängig gemacht werden.',
+        vscode.l10n.t('Bist du sicher? Diese Aktion kann nicht rückgängig gemacht werden.'),
         { modal: true },
-        'Ja, alles löschen'
+        btnJaAllesLoeschen
     );
-    if (second !== 'Ja, alles löschen') { return; }
+    if (second !== btnJaAllesLoeschen) { return; }
 
     await store.clearAll();
     await lockService.disableLockForce();

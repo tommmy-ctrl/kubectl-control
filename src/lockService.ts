@@ -6,6 +6,8 @@ import { log } from './logger';
 const ENABLED_KEY = 'kubectl-control.lock.enabled';
 const HASH_KEY = 'kubectl-control.lock.hash';
 const SALT_KEY = 'kubectl-control.lock.salt';
+const FAILED_ATTEMPTS_KEY = 'kubectl-control.lock.failedAttempts';
+const LOCKED_UNTIL_KEY = 'kubectl-control.lock.lockedUntil';
 
 export class LockService {
     private _unlocked = false;
@@ -19,8 +21,24 @@ export class LockService {
     // S2 — Brute-force protection
     private _failedAttempts = 0;
     private _lockedUntil = 0;
+    private _bruteForceLoaded = false;
 
     constructor(private readonly secrets: vscode.SecretStorage) {}
+
+    /** Lazily loads persisted brute-force counters from SecretStorage on first call. */
+    private async ensureBruteForceLoaded(): Promise<void> {
+        if (this._bruteForceLoaded) { return; }
+        this._bruteForceLoaded = true;
+        const attemptsRaw = await this.secrets.get(FAILED_ATTEMPTS_KEY);
+        const lockedUntilRaw = await this.secrets.get(LOCKED_UNTIL_KEY);
+        this._failedAttempts = attemptsRaw ? Number.parseInt(attemptsRaw, 10) || 0 : 0;
+        this._lockedUntil = lockedUntilRaw ? Number.parseInt(lockedUntilRaw, 10) || 0 : 0;
+    }
+
+    private async persistBruteForce(): Promise<void> {
+        await this.secrets.store(FAILED_ATTEMPTS_KEY, String(this._failedAttempts));
+        await this.secrets.store(LOCKED_UNTIL_KEY, String(this._lockedUntil));
+    }
 
     async isEnabled(): Promise<boolean> {
         return (await this.secrets.get(ENABLED_KEY)) === 'true';
@@ -47,8 +65,10 @@ export class LockService {
         await this.secrets.store(ENABLED_KEY, 'true');
         this._unlocked = true;
         // S2 — reset brute-force counters on fresh password set
+        this._bruteForceLoaded = true;
         this._failedAttempts = 0;
         this._lockedUntil = 0;
+        await this.persistBruteForce();
         this._onStateChange.fire();
     }
 
@@ -89,6 +109,9 @@ export class LockService {
     }
 
     async unlock(password: string): Promise<boolean> {
+        // S2 — restore persisted lockout state (survives window reload)
+        await this.ensureBruteForceLoaded();
+
         // S2 — check lockout before attempting verify
         if (Date.now() < this._lockedUntil) {
             return false;
@@ -99,6 +122,7 @@ export class LockService {
             // S2 — reset counters on success
             this._failedAttempts = 0;
             this._lockedUntil = 0;
+            await this.persistBruteForce();
             this._unlocked = true;
             this._onStateChange.fire();
             // S1 — start auto-lock timer after unlock
@@ -112,6 +136,8 @@ export class LockService {
             else if (this._failedAttempts >= 5) { lockMs = 30_000; }
             else if (this._failedAttempts >= 3) { lockMs = 10_000; }
             if (lockMs > 0) { this._lockedUntil = Date.now() + lockMs; }
+            // S2 — persist so lockout cannot be bypassed by reloading the window
+            await this.persistBruteForce();
         }
         return ok;
     }
