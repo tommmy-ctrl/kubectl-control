@@ -10,6 +10,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
 
     private view?: vscode.WebviewView;
     private _welcomeMode = false;
+    private _lastRenderedMode: 'welcome' | 'lock' | 'form' | undefined;
 
     constructor(
         private readonly extensionUri: vscode.Uri,
@@ -27,6 +28,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
 
     public resolveWebviewView(webviewView: vscode.WebviewView): void {
         this.view = webviewView;
+        this._lastRenderedMode = undefined; // reset on new view lifecycle
         webviewView.webview.options = { enableScripts: true, localResourceRoots: [this.extensionUri] };
 
         webviewView.webview.onDidReceiveMessage(async message => {
@@ -52,14 +54,21 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         if (!this.view) { return; }
 
         if (this._welcomeMode) {
-            this.view.webview.html = this.getWelcomeHtml(this.view.webview);
+            if (this._lastRenderedMode !== 'welcome') {
+                this.view.webview.html = this.getWelcomeHtml(this.view.webview);
+                this._lastRenderedMode = 'welcome';
+            }
             return;
         }
 
         const locked = await this.lockService.isEnabled() && !this.lockService.isUnlocked();
-        this.view.webview.html = locked
-            ? this.getLockHtml(this.view.webview)
-            : this.getFormHtml(this.view.webview);
+        const mode = locked ? 'lock' : 'form';
+        if (this._lastRenderedMode !== mode) {
+            this.view.webview.html = locked
+                ? this.getLockHtml(this.view.webview)
+                : this.getFormHtml(this.view.webview);
+            this._lastRenderedMode = mode;
+        }
     }
 
     private async handleUnlock(password: string): Promise<void> {

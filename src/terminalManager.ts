@@ -29,6 +29,7 @@ function resolveShellPath(shell: ShellType): string | undefined {
 
 export class TerminalManager implements vscode.Disposable {
     private readonly openTerminals = new Map<string, vscode.Terminal>();
+    private readonly terminalOpenedAt = new Map<string, number>();
     private readonly _onDidChange = new vscode.EventEmitter<void>();
     readonly onDidChange: vscode.Event<void> = this._onDidChange.event;
 
@@ -36,14 +37,39 @@ export class TerminalManager implements vscode.Disposable {
         vscode.window.onDidCloseTerminal(terminal => {
             for (const [id, t] of this.openTerminals) {
                 if (t === terminal) {
+                    const openedAt = this.terminalOpenedAt.get(id);
                     this.openTerminals.delete(id);
+                    this.terminalOpenedAt.delete(id);
                     log.info(`Terminal closed for cluster id=${id}`);
                     this._onDidChange.fire();
                     void this.deleteTempFile(id);
+
+                    if (process.platform === 'win32' && openedAt && Date.now() - openedAt < 3000) {
+                        void this.showConptyError();
+                    }
                     break;
                 }
             }
         });
+    }
+
+    private async showConptyError(): Promise<void> {
+        log.warn('Terminal closed immediately after launch — possible ConPTY error on Windows');
+        const choice = await vscode.window.showErrorMessage(
+            'Das Terminal konnte nicht gestartet werden. Auf Windows kann dies an einem ConPTY-Problem liegen.',
+            'Einstellung aktivieren',
+            'Hilfe anzeigen',
+        );
+        if (choice === 'Einstellung aktivieren') {
+            await vscode.commands.executeCommand(
+                'workbench.action.openSettings',
+                'terminal.integrated.windowsUseConptyDll',
+            );
+        } else if (choice === 'Hilfe anzeigen') {
+            void vscode.env.openExternal(
+                vscode.Uri.parse('https://code.visualstudio.com/updates/v1_109#_removal-of-winpty-support'),
+            );
+        }
     }
 
     private async deleteTempFile(clusterId: string): Promise<void> {
@@ -139,6 +165,7 @@ export class TerminalManager implements vscode.Disposable {
             }
 
             this.openTerminals.set(profile.id, terminal);
+            this.terminalOpenedAt.set(profile.id, Date.now());
             terminal.show();
             this._onDidChange.fire();
             log.info(`Terminal opened for "${profile.name}" (shell=${profile.shell ?? 'default'})`);
