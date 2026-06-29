@@ -147,6 +147,6 @@
     "webpack-cli": "^7.0.3"
   },
   "dependencies": {
-    "uuid": "^9.0.0"
+    "uuid": "^14.0.1"
   }
 }
