@@ -15,12 +15,14 @@ interface GistPayload {
     iv: string;
     tag: string;
     data: string;
+    updatedAt?: number;
 }
 
 export class GistSyncService implements vscode.Disposable {
     private _debounceTimer: ReturnType<typeof setTimeout> | undefined;
     private readonly _statusItem: vscode.StatusBarItem;
     private readonly _disposables: vscode.Disposable[] = [];
+    private _localTimestamp = 0;
 
     constructor(
         private readonly store: ClusterStore,
@@ -91,6 +93,7 @@ export class GistSyncService implements vscode.Disposable {
                     const payload = await this.fetchGist(token, gistId!);
                     const json    = this.decrypt(payload, password);
                     const count   = await this.store.importClusters(json);
+                    this._localTimestamp = Date.now();
                     log.info(`GitHub Sync: pull successful — ${count} Verbindung(en) importiert`);
                     vscode.window.showInformationMessage(`GitHub Sync: ${count} Verbindung(en) erfolgreich wiederhergestellt.`);
                 } catch (e) {
@@ -126,19 +129,47 @@ export class GistSyncService implements vscode.Disposable {
             const token = await this.getGitHubToken();
             if (!token) { return; }
 
-            const json    = await this.store.exportClusters();
-            const payload = this.encrypt(json, password);
+            const gistId = this.globalState.get<string>(GIST_ID_KEY);
 
-            let gistId = this.globalState.get<string>(GIST_ID_KEY);
+            // Conflict check: if a Gist already exists, compare remote timestamp before pushing
+            if (gistId) {
+                try {
+                    const remotePayload = await this.fetchGist(token, gistId);
+                    if ((remotePayload.updatedAt ?? 0) > this._localTimestamp) {
+                        const choice = await vscode.window.showWarningMessage(
+                            'GitHub Sync: Auf einem anderen Gerät wurden neuere Daten gefunden. Was möchtest du tun?',
+                            { modal: true },
+                            'Lokale Daten hochladen',
+                            'Remote-Daten herunterladen',
+                        );
+                        if (choice === 'Remote-Daten herunterladen') {
+                            await this.pull();
+                            return;
+                        } else if (choice !== 'Lokale Daten hochladen') {
+                            return; // dismissed
+                        }
+                        // 'Lokale Daten hochladen' — fall through to push
+                    }
+                } catch (fetchErr) {
+                    log.warn('GitHub Sync: could not fetch remote for conflict check', fetchErr);
+                    // Non-fatal — proceed with push
+                }
+            }
+
+            const now     = Date.now();
+            const json    = await this.store.exportClusters();
+            const payload = this.encrypt(json, password, now);
+
             if (gistId) {
                 await this.updateGist(token, gistId, payload);
             } else {
-                gistId = await this.createGist(token, payload);
-                await this.globalState.update(GIST_ID_KEY, gistId);
+                const newGistId = await this.createGist(token, payload);
+                await this.globalState.update(GIST_ID_KEY, newGistId);
                 await this.refreshStatusBar();
                 vscode.window.showInformationMessage('GitHub Sync eingerichtet. Verbindungen werden ab jetzt automatisch synchronisiert.');
             }
 
+            this._localTimestamp = now;
             log.info('GitHub Sync: push successful');
             this._statusItem.text    = '$(check) Sync';
             this._statusItem.tooltip = 'Letzter Sync erfolgreich';
@@ -181,18 +212,19 @@ export class GistSyncService implements vscode.Disposable {
 
     // ── Encryption ────────────────────────────────────────────────────────────
 
-    private encrypt(plaintext: string, password: string): GistPayload {
+    private encrypt(plaintext: string, password: string, timestamp = Date.now()): GistPayload {
         const salt      = nodeCrypto.randomBytes(32);
         const key       = nodeCrypto.pbkdf2Sync(password, salt, 200_000, 32, 'sha256');
         const iv        = nodeCrypto.randomBytes(12);
         const cipher    = nodeCrypto.createCipheriv('aes-256-gcm', key, iv);
         const encrypted = Buffer.concat([cipher.update(plaintext, 'utf-8'), cipher.final()]);
         return {
-            v:    1,
-            salt: salt.toString('hex'),
-            iv:   iv.toString('hex'),
-            tag:  cipher.getAuthTag().toString('hex'),
-            data: encrypted.toString('hex'),
+            v:         1,
+            salt:      salt.toString('hex'),
+            iv:        iv.toString('hex'),
+            tag:       cipher.getAuthTag().toString('hex'),
+            data:      encrypted.toString('hex'),
+            updatedAt: timestamp,
         };
     }
 

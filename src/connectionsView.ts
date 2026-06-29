@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ClusterStore, ShellType } from './store';
 import { LockService } from './lockService';
-import { importFile, promptSetPassword } from './setup';
+import { importFile, promptSetPassword, handleImportFromKubeconfig } from './setup';
 import { parseKubeconfig, getActiveNamespace } from './kubeconfigParser';
 import { log } from './logger';
 
@@ -39,10 +39,11 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
                 case 'parseKubeconfig':  await this.handleParseKubeconfig(message.yaml); break;
                 case 'loadKubeconfigFile': await this.handleLoadKubeconfigFile(); break;
                 case 'setupSkip':        this.setWelcomeMode(false); await this.refresh(); break;
+                case 'setupKubeconfig':  await this.handleSetupKubeconfig(); break;
                 case 'setupImportYes':   await this.handleSetupImport(); break;
                 case 'setupImportNo':    void this.view?.webview.postMessage({ command: 'setupGoto', step: 'password' }); break;
                 case 'setupPasswordYes': await this.handleSetupPassword(); break;
-                case 'setupPasswordNo':  void this.view?.webview.postMessage({ command: 'setupGoto', step: 'done' }); break;
+                case 'setupPasswordNo':  void this.view?.webview.postMessage({ command: 'setupGoto', step: 'tutorial' }); break;
                 case 'setupDone':        this.setWelcomeMode(false); await this.refresh(); break;
             }
         });
@@ -74,8 +75,23 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async handleUnlock(password: string): Promise<void> {
+        if (this.lockService.isLockedOut) {
+            void this.view?.webview.postMessage({ command: 'unlockLockedOut', seconds: this.lockService.lockoutRemainingSeconds });
+            return;
+        }
         const ok = await this.lockService.unlock(password);
-        if (!ok) { void this.view?.webview.postMessage({ command: 'unlockFailed' }); }
+        if (!ok) {
+            if (this.lockService.isLockedOut) {
+                void this.view?.webview.postMessage({ command: 'unlockLockedOut', seconds: this.lockService.lockoutRemainingSeconds });
+            } else {
+                void this.view?.webview.postMessage({ command: 'unlockFailed' });
+            }
+        }
+    }
+
+    private async handleSetupKubeconfig(): Promise<void> {
+        await handleImportFromKubeconfig(this.store, () => { this.onChanged(); });
+        void this.view?.webview.postMessage({ command: 'setupGoto', step: 'import' });
     }
 
     private async handleSetupImport(): Promise<void> {
@@ -90,7 +106,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
 
     private async handleSetupPassword(): Promise<void> {
         await promptSetPassword(this.lockService);
-        void this.view?.webview.postMessage({ command: 'setupGoto', step: 'done' });
+        void this.view?.webview.postMessage({ command: 'setupGoto', step: 'tutorial' });
     }
 
     private async addCluster(msg: Record<string, string>): Promise<void> {
@@ -309,9 +325,22 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
             </div>
         </div>
 
+        <!-- Step: kubeconfig -->
+        <div class="step" id="step-kubeconfig">
+            <div class="step-counter">Schritt 1 von 3</div>
+            <div class="step-card">
+                <div class="step-title">Lokale Verbindungen erkennen</div>
+                <div class="step-desc">Möchtest du vorhandene Contexts aus ~/.kube/config importieren?</div>
+                <div class="btn-col">
+                    <button class="btn-primary" id="btnKubeconfigYes">Jetzt importieren</button>
+                    <button class="btn-ghost" id="btnKubeconfigNo">Überspringen</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Step: import -->
         <div class="step" id="step-import">
-            <div class="step-counter">Schritt 1 von 2</div>
+            <div class="step-counter">Schritt 2 von 3</div>
             <div class="step-card">
                 <div class="step-title">Verbindungen importieren?</div>
                 <div class="step-desc">Hast du bereits eine Exportdatei mit Cluster-Verbindungen?</div>
@@ -325,7 +354,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
 
         <!-- Step: password -->
         <div class="step" id="step-password">
-            <div class="step-counter">Schritt 2 von 2</div>
+            <div class="step-counter">Schritt 3 von 3</div>
             <div class="step-card">
                 <div class="step-title">Passwort-Schutz?</div>
                 <div class="step-desc">Schütze die Erweiterung mit einem Passwort beim Öffnen.</div>
@@ -333,6 +362,45 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
                     <button class="btn-primary" id="btnPwdYes">Aktivieren</button>
                     <button class="btn-ghost" id="btnPwdNo">Überspringen</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Step: tutorial -->
+        <div class="step" id="step-tutorial">
+            <div class="step-card" style="gap:14px;">
+                <div class="step-title" style="font-size:1rem;">Willkommen bei Kubectl Control 🎉</div>
+                <div class="step-desc" style="text-align:left;">Hier ist ein Überblick über alle Funktionen:</div>
+                <ul style="list-style:none;display:flex;flex-direction:column;gap:9px;padding:0;">
+                    <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
+                        <span style="flex-shrink:0;">🖥️</span>
+                        <span><strong>Terminal öffnen</strong> — Klicke einen Cluster an, um ein isoliertes Terminal mit der richtigen kubeconfig zu starten</span>
+                    </li>
+                    <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
+                        <span style="flex-shrink:0;">⚡</span>
+                        <span><strong>Quick Switch</strong> — <code style="font-size:0.78rem;background:var(--vscode-textCodeBlock-background,rgba(255,255,255,0.1));padding:1px 4px;border-radius:3px;">Ctrl+Shift+K</code> öffnet die Cluster-Schnellauswahl</span>
+                    </li>
+                    <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
+                        <span style="flex-shrink:0;">🔒</span>
+                        <span><strong>Passwort-Schutz</strong> — Schütze deine Verbindungen mit einem Passwort (Einstellungen → Passwort-Schutz aktivieren)</span>
+                    </li>
+                    <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
+                        <span style="flex-shrink:0;">☁️</span>
+                        <span><strong>GitHub Sync</strong> — Synchronisiere Verbindungen verschlüsselt mit deinem GitHub-Account (Einstellungen → GitHub Sync einrichten)</span>
+                    </li>
+                    <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
+                        <span style="flex-shrink:0;">📤</span>
+                        <span><strong>Export / Import</strong> — Erstelle verschlüsselte Backups deiner Verbindungen</span>
+                    </li>
+                    <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
+                        <span style="flex-shrink:0;">🏷️</span>
+                        <span><strong>Gruppen</strong> — Organisiere Cluster in Gruppen</span>
+                    </li>
+                    <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
+                        <span style="flex-shrink:0;">✏️</span>
+                        <span><strong>Bearbeiten</strong> — Rechtsklick auf einen Cluster zum Bearbeiten oder Löschen</span>
+                    </li>
+                </ul>
+                <button class="btn-primary" id="btnTutorialDone" style="margin-top:4px;">Los geht's!</button>
             </div>
         </div>
 
@@ -356,8 +424,11 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
             document.getElementById('step-' + id).classList.add('active');
         }
 
-        document.getElementById('btnStart').addEventListener('click', () => showStep('import'));
+        document.getElementById('btnStart').addEventListener('click', () => showStep('kubeconfig'));
         document.getElementById('btnSkip').addEventListener('click', () => vscode.postMessage({ command: 'setupSkip' }));
+
+        document.getElementById('btnKubeconfigYes').addEventListener('click', () => vscode.postMessage({ command: 'setupKubeconfig' }));
+        document.getElementById('btnKubeconfigNo').addEventListener('click', () => showStep('import'));
 
         document.getElementById('btnImportYes').addEventListener('click', () => {
             document.getElementById('importHint').textContent = '';
@@ -367,6 +438,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
 
         document.getElementById('btnPwdYes').addEventListener('click', () => vscode.postMessage({ command: 'setupPasswordYes' }));
         document.getElementById('btnPwdNo').addEventListener('click', () => vscode.postMessage({ command: 'setupPasswordNo' }));
+        document.getElementById('btnTutorialDone').addEventListener('click', () => vscode.postMessage({ command: 'setupDone' }));
         document.getElementById('btnDone').addEventListener('click', () => vscode.postMessage({ command: 'setupDone' }));
 
         window.addEventListener('message', event => {
@@ -431,11 +503,27 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         window.addEventListener('message', event => {
             if (event.data.command === 'unlockFailed') {
                 const err = document.getElementById('lockError');
+                err.textContent = 'Falsches Passwort. Bitte erneut versuchen.';
                 err.style.display = '';
                 const pwd = document.getElementById('lockPwd');
                 pwd.value = ''; pwd.focus();
                 pwd.classList.add('input-error');
                 setTimeout(() => pwd.classList.remove('input-error'), 1500);
+            }
+            if (event.data.command === 'unlockLockedOut') {
+                const err = document.getElementById('lockError');
+                err.textContent = 'Zu viele Fehlversuche. Bitte warte ' + event.data.seconds + ' Sekunden.';
+                err.style.display = '';
+                const pwd = document.getElementById('lockPwd');
+                const btn = document.querySelector('button[type="submit"]');
+                pwd.disabled = true;
+                btn.disabled = true;
+                setTimeout(() => {
+                    err.style.display = 'none';
+                    pwd.disabled = false;
+                    btn.disabled = false;
+                    pwd.focus();
+                }, event.data.seconds * 1000);
             }
         });
     </script>

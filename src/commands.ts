@@ -5,7 +5,7 @@ import { ConnectionsViewProvider } from './connectionsView';
 import { LockService } from './lockService';
 import { TerminalManager } from './terminalManager';
 import { encryptData } from './crypto';
-import { importFile, promptSetPassword, resetSetup } from './setup';
+import { importFile, promptSetPassword, resetSetup, handleImportFromKubeconfig } from './setup';
 import { GistSyncService } from './gistSync';
 import { log } from './logger';
 
@@ -18,8 +18,17 @@ export function registerCommands(
     terminalManager: TerminalManager,
     gistSync: GistSyncService,
 ) {
+    const assertUnlocked = async (): Promise<boolean> => {
+        if (!await lockService.isEnabled()) { lockService.recordActivity(); return true; }
+        if (lockService.isUnlocked()) { lockService.recordActivity(); return true; }
+        await vscode.commands.executeCommand('kubectl-control.connectionsView.focus');
+        vscode.window.showWarningMessage('Kubectl Control ist gesperrt. Bitte zuerst entsperren.');
+        return false;
+    };
+
     const deleteClusterCmd = vscode.commands.registerCommand('kubectl-control.deleteCluster', async (item: ClusterTreeItem) => {
         if (!item) { return; }
+        if (!await assertUnlocked()) { return; }
         const confirm = await vscode.window.showWarningMessage(
             `Cluster '${item.profile.name}' wirklich löschen?`,
             { modal: true },
@@ -33,6 +42,7 @@ export function registerCommands(
 
     const editClusterCmd = vscode.commands.registerCommand('kubectl-control.editCluster', async (item: ClusterTreeItem) => {
         if (!item) { return; }
+        if (!await assertUnlocked()) { return; }
         connectionsView.prefillEdit(
             item.profile.id,
             item.profile.name,
@@ -45,11 +55,13 @@ export function registerCommands(
 
     const openTerminalCmd = vscode.commands.registerCommand('kubectl-control.openTerminal', async (item: ClusterTreeItem) => {
         if (!item) { return; }
+        if (!await assertUnlocked()) { return; }
         await terminalManager.openOrFocus(item.profile);
     });
 
     // Quick-Switch: Ctrl+Shift+K — pick cluster from all saved, open/focus terminal
     const quickSwitchCmd = vscode.commands.registerCommand('kubectl-control.quickSwitch', async () => {
+        if (!await assertUnlocked()) { return; }
         const clusters = await store.getClusters();
         if (clusters.length === 0) {
             vscode.window.showInformationMessage('Keine gespeicherten Verbindungen vorhanden.');
@@ -73,6 +85,75 @@ export function registerCommands(
         log.show();
     });
 
+    const switchNamespaceCmd = vscode.commands.registerCommand('kubectl-control.switchNamespace', async () => {
+        if (!await assertUnlocked()) { return; }
+        const clusters = await store.getClusters();
+        if (clusters.length === 0) {
+            vscode.window.showInformationMessage('Keine gespeicherten Verbindungen vorhanden.');
+            return;
+        }
+        const clusterItems = clusters.map(c => ({
+            label: terminalManager.isOpen(c.id) ? `$(terminal) ${c.name}` : `$(server-environment) ${c.name}`,
+            description: [c.group, c.namespace].filter(Boolean).join('  ·  '),
+            cluster: c,
+        }));
+        const clusterPick = await vscode.window.showQuickPick(clusterItems, {
+            title: 'Kubectl Control – Namespace wechseln: Cluster wählen',
+            placeHolder: 'Cluster auswählen…',
+            matchOnDescription: true,
+        });
+        if (!clusterPick) { return; }
+
+        const cluster = clusterPick.cluster;
+        const currentNs = cluster.namespace ?? 'default';
+        const suggestions = ['default', 'kube-system', 'kube-public'];
+        if (!suggestions.includes(currentNs)) {
+            suggestions.unshift(currentNs);
+        }
+        const nsItems = suggestions.map(ns => ({
+            label: ns,
+            description: ns === currentNs ? '(aktuell)' : undefined,
+        }));
+        const nsPick = await vscode.window.showQuickPick(nsItems, {
+            title: `Namespace für "${cluster.name}" wählen`,
+            placeHolder: currentNs,
+            canPickMany: false,
+        });
+        if (!nsPick) { return; }
+
+        const chosenNamespace = nsPick.label;
+        await store.updateCluster(cluster.id, { namespace: chosenNamespace });
+        if (terminalManager.isOpen(cluster.id)) {
+            terminalManager.sendToTerminal(cluster.id, `kubectl config set-context --current --namespace=${chosenNamespace}`);
+        }
+        vscode.window.showInformationMessage(`Namespace für "${cluster.name}" auf "${chosenNamespace}" gesetzt.`);
+        treeProvider.refresh();
+    });
+
+    const togglePinCmd = vscode.commands.registerCommand('kubectl-control.togglePin', async (item: ClusterTreeItem) => {
+        if (!item) { return; }
+        const newPinned = !item.profile.pinned;
+        await store.updateCluster(item.profile.id, { pinned: newPinned });
+        treeProvider.refresh();
+        if (newPinned) {
+            vscode.window.showInformationMessage(`"${item.profile.name}" angepinnt.`);
+        } else {
+            vscode.window.showInformationMessage(`"${item.profile.name}" losgelöst.`);
+        }
+    });
+
+    const toggleProdCmd = vscode.commands.registerCommand('kubectl-control.toggleProd', async (item: ClusterTreeItem) => {
+        if (!item) { return; }
+        const newIsProd = !item.profile.isProd;
+        await store.updateCluster(item.profile.id, { isProd: newIsProd });
+        treeProvider.refresh();
+        if (newIsProd) {
+            vscode.window.showInformationMessage(`"${item.profile.name}" als Produktionsumgebung markiert.`);
+        } else {
+            vscode.window.showInformationMessage(`"${item.profile.name}" Markierung entfernt.`);
+        }
+    });
+
 
     const settingsMenuCmd = vscode.commands.registerCommand('kubectl-control.settingsMenu', async () => {
         const lockEnabled = await lockService.isEnabled();
@@ -82,6 +163,7 @@ export function registerCommands(
         const items: (vscode.QuickPickItem & { action: string })[] = [
             { label: '$(cloud-upload) Export (verschlüsselt)', description: 'Alle Verbindungen mit Passwort verschlüsselt exportieren', action: 'export' },
             { label: '$(cloud-download) Import', description: 'Verbindungen aus Datei importieren', action: 'import' },
+            { label: '$(folder) Aus ~/.kube/config importieren', description: 'Lokale kubectl-Contexts übernehmen', action: 'import-kubeconfig' },
             { kind: vscode.QuickPickItemKind.Separator, label: 'GitHub Sync', action: '' },
         ];
 
@@ -114,6 +196,8 @@ export function registerCommands(
         }
 
         items.push(
+            { kind: vscode.QuickPickItemKind.Separator, label: 'Cluster', action: '' },
+            { label: '$(symbol-namespace) Namespace wechseln', description: 'Namespace für einen Cluster ändern', action: 'switch-namespace' },
             { kind: vscode.QuickPickItemKind.Separator, label: '', action: '' },
             { label: '$(output) Debug-Logs anzeigen', description: 'Output-Panel mit Logs öffnen', action: 'logs' },
             { label: '$(trash) Anwendung zurücksetzen', description: 'Alle Verbindungen und Einstellungen löschen', action: 'reset' }
@@ -126,8 +210,9 @@ export function registerCommands(
         if (!pick) { return; }
 
         switch (pick.action) {
-            case 'export':       await handleExport(store); break;
-            case 'import':       await handleImport(store, treeProvider); break;
+            case 'export':            await handleExport(store); break;
+            case 'import':            await handleImport(store, treeProvider); break;
+            case 'import-kubeconfig': await handleImportFromKubeconfig(store, () => treeProvider.refresh()); break;
             case 'sync-setup':   void gistSync.setupOrPush(); break;
             case 'sync-now':     void gistSync.setupOrPush(); break;
             case 'sync-restore': void gistSync.pull(); break;
@@ -136,6 +221,7 @@ export function registerCommands(
             case 'lock-change':  await handleChangePassword(lockService); break;
             case 'lock-disable': await handleDisableLock(lockService); break;
             case 'lock-now':     lockService.lock(); break;
+            case 'switch-namespace': await vscode.commands.executeCommand('kubectl-control.switchNamespace'); break;
             case 'logs':         log.show(); break;
             case 'reset':        await handleReset(context, store, lockService, treeProvider, connectionsView); break;
         }
@@ -144,6 +230,7 @@ export function registerCommands(
     context.subscriptions.push(
         deleteClusterCmd, editClusterCmd, openTerminalCmd,
         quickSwitchCmd, showLogsCmd, settingsMenuCmd,
+        switchNamespaceCmd, togglePinCmd, toggleProdCmd,
         vscode.commands.registerCommand('kubectl-control.syncNow',     () => void gistSync.setupOrPush()),
         vscode.commands.registerCommand('kubectl-control.syncRestore', () => void gistSync.pull()),
         vscode.commands.registerCommand('kubectl-control.syncDisable', () => void gistSync.disable()),

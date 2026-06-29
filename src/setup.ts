@@ -1,7 +1,11 @@
 import * as vscode from 'vscode';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { ClusterStore } from './store';
 import { LockService } from './lockService';
 import { decryptData, isEncryptedFile } from './crypto';
+import { parseKubeconfig } from './kubeconfigParser';
+import { log } from './logger';
 
 export const SETUP_KEY = 'kubectl-control.setupDone';
 
@@ -53,6 +57,67 @@ export async function importFile(
     }
 }
 
+export async function importFromLocalKubeconfig(
+    store: ClusterStore,
+    onImported: () => void,
+): Promise<{ imported: number; skipped: number }> {
+    const kubeconfigPath = path.join(os.homedir(), '.kube', 'config');
+    let content: string;
+    try {
+        const raw = await vscode.workspace.fs.readFile(vscode.Uri.file(kubeconfigPath));
+        content = new TextDecoder().decode(raw);
+    } catch {
+        log.info('No ~/.kube/config found, skipping auto-import');
+        return { imported: 0, skipped: 0 };
+    }
+
+    const parsed = parseKubeconfig(content);
+    if (!parsed.valid || parsed.contexts.length === 0) {
+        log.info('~/.kube/config parsed but no contexts found');
+        return { imported: 0, skipped: 0 };
+    }
+
+    const existing = await store.getClusters();
+    const existingNames = new Set(existing.map(c => c.name));
+
+    let imported = 0;
+    let skipped = 0;
+
+    for (const ctx of parsed.contexts) {
+        if (existingNames.has(ctx.name)) {
+            skipped++;
+            continue;
+        }
+        await store.addCluster({
+            name: ctx.name,
+            kubeconfigData: content,
+            activeContext: ctx.name,
+            namespace: ctx.namespace || 'default',
+        });
+        imported++;
+    }
+
+    if (imported > 0) {
+        onImported();
+    }
+    log.info(`importFromLocalKubeconfig: imported=${imported}, skipped=${skipped}`);
+    return { imported, skipped };
+}
+
+export async function handleImportFromKubeconfig(
+    store: ClusterStore,
+    onImported: () => void,
+): Promise<void> {
+    const { imported, skipped } = await importFromLocalKubeconfig(store, onImported);
+    if (imported === 0 && skipped === 0) {
+        vscode.window.showInformationMessage('Keine Contexts in ~/.kube/config gefunden.');
+    } else {
+        vscode.window.showInformationMessage(
+            `${imported} Verbindung(en) aus ~/.kube/config importiert, ${skipped} bereits vorhanden.`
+        );
+    }
+}
+
 export async function promptSetPassword(lockService: LockService): Promise<boolean> {
     const pwd = await vscode.window.showInputBox({
         title: 'Passwort festlegen',
@@ -75,34 +140,3 @@ export async function promptSetPassword(lockService: LockService): Promise<boole
     return true;
 }
 
-// Used by the settings menu — runs import + password setup as a QuickPick wizard (alternative to the panel wizard)
-export async function runSetupWizard(
-    store: ClusterStore,
-    lockService: LockService,
-    onImported: () => void
-): Promise<void> {
-    const doImport = await vscode.window.showQuickPick(
-        [
-            { label: '$(cloud-download) Verbindungen importieren', description: 'Aus einer Exportdatei', doIt: true },
-            { label: '$(close) Überspringen', description: 'Neu beginnen', doIt: false }
-        ],
-        { title: 'Setup (1/2) – Import', placeHolder: 'Möchtest du bestehende Verbindungen importieren?' }
-    );
-
-    if (doImport?.doIt) {
-        const uris = await vscode.window.showOpenDialog({ filters: { 'JSON': ['json'] }, canSelectMany: false });
-        if (uris && uris.length > 0) { await importFile(uris[0], store, onImported); }
-    }
-
-    const doLock = await vscode.window.showQuickPick(
-        [
-            { label: '$(lock) Passwort-Schutz aktivieren', description: 'Erweiterung beim Öffnen sperren', doIt: true },
-            { label: '$(close) Überspringen', doIt: false }
-        ],
-        { title: 'Setup (2/2) – Passwort-Schutz', placeHolder: 'Möchtest du die Erweiterung mit einem Passwort sichern?' }
-    );
-
-    if (doLock?.doIt) { await promptSetPassword(lockService); }
-
-    vscode.window.showInformationMessage('Kubectl Control – Setup abgeschlossen!');
-}

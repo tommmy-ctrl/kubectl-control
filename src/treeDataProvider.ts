@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ClusterStore, ClusterProfile } from './store';
 import { TerminalManager } from './terminalManager';
 import { LockService } from './lockService';
+import { ClusterStatusService, ClusterStatus } from './clusterStatus';
 
 // ── Tree node union type ──────────────────────────────────────────────────────
 
@@ -30,25 +31,44 @@ export class ClusterTreeItem extends vscode.TreeItem {
     constructor(
         public readonly profile: ClusterProfile,
         hasTerminal: boolean,
+        status: ClusterStatus = 'unknown',
     ) {
         super(profile.name, vscode.TreeItemCollapsibleState.None);
         this.id = profile.id;
 
         const ns = profile.namespace ?? 'default';
-        this.description = hasTerminal ? `${ns}  ●` : ns;
-        this.tooltip = new vscode.MarkdownString(
+
+        // Build description: prod marker first, then ns, then terminal indicator, then status
+        let desc = '';
+        if (profile.isProd === true) {
+            desc += '🔴 ';
+        }
+        desc += hasTerminal ? `${ns}  ●` : ns;
+        if (status === 'reachable') {
+            desc += ' 🟢';
+        } else if (status === 'unreachable') {
+            desc += ' 🔴';
+        }
+        this.description = desc;
+
+        const tooltipLines =
             `**${profile.name}**\n\n` +
             `- Namespace: \`${ns}\`\n` +
             `- Context: \`${profile.activeContext ?? '(Standard)'}\`\n` +
             `- Shell: \`${profile.shell ?? 'default'}\`\n` +
             (profile.group ? `- Gruppe: \`${profile.group}\`\n` : '') +
-            (hasTerminal ? '\n_Terminal ist geöffnet_' : '')
-        );
+            (profile.isProd ? '\n⚠️ Produktionsumgebung — Änderungen wirken sich direkt aus\n' : '') +
+            (hasTerminal ? '\n_Terminal ist geöffnet_' : '');
+        this.tooltip = new vscode.MarkdownString(tooltipLines);
 
-        this.iconPath = new vscode.ThemeIcon(
-            hasTerminal ? 'terminal' : 'server-environment',
-            hasTerminal ? new vscode.ThemeColor('terminal.ansiGreen') : undefined,
-        );
+        if (profile.isProd === true && !hasTerminal) {
+            this.iconPath = new vscode.ThemeIcon('lock-small', new vscode.ThemeColor('charts.red'));
+        } else {
+            this.iconPath = new vscode.ThemeIcon(
+                hasTerminal ? 'terminal' : 'server-environment',
+                hasTerminal ? new vscode.ThemeColor('terminal.ansiGreen') : undefined,
+            );
+        }
 
         this.command = {
             command: 'kubectl-control.openTerminal',
@@ -76,6 +96,21 @@ export class LockedItem extends vscode.TreeItem {
     }
 }
 
+// ── Sort helpers ──────────────────────────────────────────────────────────────
+
+function sortClusters(clusters: ClusterProfile[]): ClusterProfile[] {
+    return [...clusters].sort((a, b) => {
+        const aPinned = a.pinned === true;
+        const bPinned = b.pinned === true;
+        if (aPinned !== bPinned) { return aPinned ? -1 : 1; }
+        // Both pinned or both not pinned: sort by lastUsed desc, then name
+        const aLast = a.lastUsed ?? 0;
+        const bLast = b.lastUsed ?? 0;
+        if (bLast !== aLast) { return bLast - aLast; }
+        return a.name.localeCompare(b.name);
+    });
+}
+
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterTreeNode> {
@@ -86,9 +121,13 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
         private readonly store: ClusterStore,
         private readonly terminalManager: TerminalManager,
         private readonly lockService: LockService,
+        private readonly clusterStatusService?: ClusterStatusService,
     ) {
         terminalManager.onDidChange(() => this.refresh());
         lockService.onStateChange(() => this.refresh());
+        if (clusterStatusService) {
+            clusterStatusService.onDidChange(() => this.refresh());
+        }
     }
 
     refresh(): void {
@@ -102,7 +141,12 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
     async getChildren(element?: ClusterTreeNode): Promise<ClusterTreeNode[]> {
         // Children of a group
         if (element instanceof ClusterGroupItem) {
-            return element.clusters.map(c => new ClusterTreeItem(c, this.terminalManager.isOpen(c.id)));
+            const sorted = sortClusters(element.clusters);
+            return sorted.map(c => new ClusterTreeItem(
+                c,
+                this.terminalManager.isOpen(c.id),
+                this.clusterStatusService?.getStatus(c.id) ?? 'unknown',
+            ));
         }
 
         // Show lock placeholder when locked
@@ -127,15 +171,20 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
 
         const nodes: ClusterTreeNode[] = [];
 
-        // Group items first (sorted)
+        // Group items first (sorted alphabetically)
         const sortedGroups = [...grouped.keys()].sort((a, b) => a.localeCompare(b));
         for (const name of sortedGroups) {
             nodes.push(new ClusterGroupItem(name, grouped.get(name)!));
         }
 
-        // Ungrouped clusters
-        for (const c of ungrouped) {
-            nodes.push(new ClusterTreeItem(c, this.terminalManager.isOpen(c.id)));
+        // Ungrouped clusters: pinned first, then by lastUsed desc, then name
+        const sortedUngrouped = sortClusters(ungrouped);
+        for (const c of sortedUngrouped) {
+            nodes.push(new ClusterTreeItem(
+                c,
+                this.terminalManager.isOpen(c.id),
+                this.clusterStatusService?.getStatus(c.id) ?? 'unknown',
+            ));
         }
 
         return nodes;

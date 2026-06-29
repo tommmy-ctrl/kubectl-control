@@ -6,6 +6,7 @@ import { ConnectionsViewProvider } from './connectionsView';
 import { LockService } from './lockService';
 import { TerminalManager } from './terminalManager';
 import { GistSyncService } from './gistSync';
+import { ClusterStatusService } from './clusterStatus';
 import { isSetupDone, markSetupDone } from './setup';
 import { log } from './logger';
 
@@ -14,9 +15,20 @@ export function activate(context: vscode.ExtensionContext) {
 
     const store = new ClusterStore(context);
     const lockService = new LockService(context.secrets);
-    const terminalManager = new TerminalManager();
+    const autoLockMinutes = vscode.workspace.getConfiguration('kubectl-control').get<number>('autoLockMinutes', 0);
+    lockService.setAutoLock(autoLockMinutes);
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('kubectl-control.autoLockMinutes')) {
+                lockService.setAutoLock(vscode.workspace.getConfiguration('kubectl-control').get<number>('autoLockMinutes', 0));
+            }
+        })
+    );
+    const terminalManager = new TerminalManager(store);
+    terminalManager.cleanupOrphanedTempFiles().catch(e => log.warn('Temp cleanup on startup failed', e));
     const gistSync = new GistSyncService(store, context.secrets, context.globalState);
-    const treeProvider = new ClusterTreeDataProvider(store, terminalManager, lockService);
+    const clusterStatusService = new ClusterStatusService(store, terminalManager);
+    const treeProvider = new ClusterTreeDataProvider(store, terminalManager, lockService, clusterStatusService);
     const connectionsViewProvider = new ConnectionsViewProvider(
         context.extensionUri, store, lockService, () => treeProvider.refresh()
     );
@@ -29,10 +41,30 @@ export function activate(context: vscode.ExtensionContext) {
     void vscode.commands.executeCommand('setContext', 'kubectl-control.showClusters', !welcomeMode);
 
     vscode.window.registerTreeDataProvider('kubectl-control.clustersView', treeProvider);
+
+    const activeClusterStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
+    activeClusterStatus.command = 'kubectl-control.quickSwitch';
+    activeClusterStatus.tooltip = 'Aktiver Cluster – klicken zum Wechseln';
+    context.subscriptions.push(activeClusterStatus);
+
     context.subscriptions.push(
+        terminalManager.onActiveChange(async (clusterId) => {
+            if (!clusterId) {
+                activeClusterStatus.hide();
+                return;
+            }
+            const clusters = await store.getClusters();
+            const cluster = clusters.find(c => c.id === clusterId);
+            if (cluster) {
+                const prodBadge = cluster.isProd ? ' 🔴' : '';
+                activeClusterStatus.text = `$(terminal) ${cluster.name}${prodBadge}`;
+                activeClusterStatus.show();
+            }
+        }),
         vscode.window.registerWebviewViewProvider(ConnectionsViewProvider.viewType, connectionsViewProvider),
         terminalManager,
         gistSync,
+        clusterStatusService,
     );
 
     registerCommands(context, store, treeProvider, connectionsViewProvider, lockService, terminalManager, gistSync);

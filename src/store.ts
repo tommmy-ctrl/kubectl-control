@@ -12,6 +12,9 @@ export interface ClusterProfile {
     shell?: ShellType;
     namespace?: string;
     activeContext?: string;
+    pinned?: boolean;
+    lastUsed?: number;
+    isProd?: boolean;
 }
 
 export interface AddClusterOptions {

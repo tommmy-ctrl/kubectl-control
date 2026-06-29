@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
-import { ClusterProfile, ShellType } from './store';
+import { ClusterProfile, ClusterStore, ShellType } from './store';
 import { log } from './logger';
 
 // On Windows, prefer Git Bash if present; fall back to undefined (VS Code default shell) so the terminal still opens.
@@ -27,13 +27,23 @@ function resolveShellPath(shell: ShellType): string | undefined {
     return paths[shell];
 }
 
+/** Allows only safe Kubernetes context name characters (RFC 1123 + slashes for namespaced names). */
+function isSafeContextName(name: string): boolean {
+    return /^[a-zA-Z0-9._/@:-]{1,253}$/.test(name);
+}
+
 export class TerminalManager implements vscode.Disposable {
     private readonly openTerminals = new Map<string, vscode.Terminal>();
     private readonly terminalOpenedAt = new Map<string, number>();
     private readonly _onDidChange = new vscode.EventEmitter<void>();
     readonly onDidChange: vscode.Event<void> = this._onDidChange.event;
+    private _kubectlAvailable?: boolean;
+    private _activeClusterId?: string;
+    private readonly _onActiveChange = new vscode.EventEmitter<string | undefined>();
+    readonly onActiveChange: vscode.Event<string | undefined> = this._onActiveChange.event;
 
-    constructor() {
+    constructor(private readonly store: ClusterStore) {
+
         vscode.window.onDidCloseTerminal(terminal => {
             for (const [id, t] of this.openTerminals) {
                 if (t === terminal) {
@@ -43,6 +53,11 @@ export class TerminalManager implements vscode.Disposable {
                     log.info(`Terminal closed for cluster id=${id}`);
                     this._onDidChange.fire();
                     void this.deleteTempFile(id);
+
+                    if (id === this._activeClusterId) {
+                        this._activeClusterId = undefined;
+                        this._onActiveChange.fire(undefined);
+                    }
 
                     if (process.platform === 'win32' && openedAt && Date.now() - openedAt < 3000) {
                         void this.showConptyError();
@@ -90,35 +105,68 @@ export class TerminalManager implements vscode.Disposable {
         return [...this.openTerminals.keys()];
     }
 
+    sendToTerminal(clusterId: string, text: string): void {
+        const terminal = this.openTerminals.get(clusterId);
+        if (terminal) {
+            terminal.sendText(text);
+        }
+    }
+
+    getActiveClusterId(): string | undefined {
+        return this._activeClusterId;
+    }
+
     /** Focus existing terminal or open a new one. */
     async openOrFocus(profile: ClusterProfile): Promise<void> {
         const existing = this.openTerminals.get(profile.id);
         if (existing) {
             log.info(`Focusing existing terminal for "${profile.name}"`);
             existing.show();
+            this._activeClusterId = profile.id;
+            this._onActiveChange.fire(profile.id);
+            await this.store.updateCluster(profile.id, { lastUsed: Date.now() });
             return;
         }
         if (!await this.isKubectlAvailable()) {
             const { openAnyway } = await this.showKubectlMissingWarning();
             if (!openAnyway) { return; }
         }
+        if (profile.isProd) {
+            const confirm = await vscode.window.showWarningMessage(
+                `⚠️ "${profile.name}" ist eine Produktionsumgebung. Terminal wirklich öffnen?`,
+                { modal: true },
+                'Öffnen',
+            );
+            if (confirm !== 'Öffnen') { return; }
+        }
         await this.openNew(profile);
+        this._activeClusterId = profile.id;
+        this._onActiveChange.fire(profile.id);
+        await this.store.updateCluster(profile.id, { lastUsed: Date.now() });
     }
 
     private async isKubectlAvailable(): Promise<boolean> {
+        // Return cached positive result — skip the subprocess on every subsequent terminal open.
+        // We still re-check if the previous result was false/undefined.
+        if (this._kubectlAvailable === true) {
+            return true;
+        }
         const { exec } = await import('node:child_process');
         const { promisify } = await import('node:util');
         const execAsync = promisify(exec);
         try {
             await execAsync('kubectl version --client --output=json');
+            this._kubectlAvailable = true;
             return true;
         } catch (e: unknown) {
             // Exit code 1 with output still means kubectl exists but cannot reach server — that's fine
             const err = e as { stdout?: string; stderr?: string };
             if (err.stdout?.includes('clientVersion') || err.stderr?.includes('clientVersion')) {
+                this._kubectlAvailable = true;
                 return true;
             }
             log.warn('kubectl not found in PATH', e);
+            this._kubectlAvailable = false;
             return false;
         }
     }
@@ -126,14 +174,14 @@ export class TerminalManager implements vscode.Disposable {
     private async showKubectlMissingWarning(): Promise<{ openAnyway: boolean }> {
         log.warn('kubectl not found in PATH — showing install prompt');
         const choice = await vscode.window.showWarningMessage(
-            'kubectl was not found in PATH. Install it to use this terminal.',
-            'Install kubectl',
-            'Open anyway',
+            'kubectl wurde nicht in PATH gefunden. Bitte installieren, um Terminals zu nutzen.',
+            'kubectl installieren',
+            'Trotzdem öffnen',
         );
-        if (choice === 'Install kubectl') {
+        if (choice === 'kubectl installieren') {
             void vscode.env.openExternal(vscode.Uri.parse('https://kubernetes.io/docs/tasks/tools/'));
         }
-        return { openAnyway: choice === 'Open anyway' };
+        return { openAnyway: choice === 'Trotzdem öffnen' };
     }
 
     private tempFilePath(clusterId: string): string {
@@ -159,9 +207,22 @@ export class TerminalManager implements vscode.Disposable {
                 },
             });
 
-            // If a specific context is selected, set it automatically
+            if (profile.isProd === true) {
+                terminal.sendText(`echo "⚠️  ACHTUNG: Dies ist eine PRODUKTIONSUMGEBUNG (${profile.name}). Änderungen wirken sich direkt aus."`);
+            }
+
+            // If a specific context is selected, set it automatically.
+            // Validate the name first — it originates from imported kubeconfig data
+            // and must not be allowed to inject extra shell commands into the terminal.
             if (profile.activeContext) {
-                terminal.sendText(`kubectl config use-context ${profile.activeContext}`);
+                if (isSafeContextName(profile.activeContext)) {
+                    terminal.sendText(`kubectl config use-context ${profile.activeContext}`);
+                } else {
+                    log.warn(`Skipping auto use-context: unsafe context name "${profile.activeContext}"`);
+                    vscode.window.showWarningMessage(
+                        `Context "${profile.activeContext}" enthält ungültige Zeichen und wurde nicht automatisch gesetzt.`,
+                    );
+                }
             }
 
             this.openTerminals.set(profile.id, terminal);
@@ -175,7 +236,29 @@ export class TerminalManager implements vscode.Disposable {
         }
     }
 
+    async cleanupOrphanedTempFiles(): Promise<void> {
+        const tempDir = path.join(os.tmpdir(), 'kubectl-control-ext');
+        try {
+            const entries = await fs.readdir(tempDir);
+            await Promise.all(
+                entries
+                    .filter(f => f.startsWith('kubeconfig-') && f.endsWith('.yaml'))
+                    .map(f => fs.unlink(path.join(tempDir, f)).catch(() => undefined)),
+            );
+            if (entries.length > 0) {
+                log.info(`Cleaned up ${entries.length} orphaned temp kubeconfig file(s)`);
+            }
+        } catch {
+            // Directory doesn't exist yet — nothing to clean
+        }
+    }
+
     dispose(): void {
+        // Remove any temp files for currently open terminals on shutdown
+        for (const id of this.openTerminals.keys()) {
+            fs.unlink(this.tempFilePath(id)).catch(() => undefined);
+        }
         this._onDidChange.dispose();
+        this._onActiveChange.dispose();
     }
 }

@@ -1,3 +1,5 @@
+import * as jsYaml from 'js-yaml';
+
 export interface KubeconfigContext {
     name: string;
     cluster: string;
@@ -12,7 +14,7 @@ export interface ParseResult {
 }
 
 /**
- * Parses a kubeconfig YAML string using a line-by-line state machine.
+ * Parses a kubeconfig YAML string using js-yaml.
  * Handles standard single- and multi-context kubeconfig files.
  */
 export function parseKubeconfig(yaml: string): ParseResult {
@@ -20,98 +22,46 @@ export function parseKubeconfig(yaml: string): ParseResult {
         return { valid: false, error: 'Leerer Inhalt', contexts: [], currentContext: '' };
     }
 
-    const lines = yaml.split('\n');
-    const hasApiVersion = lines.some(l => /^\s*apiVersion\s*:/.test(l));
-    const hasKind = lines.some(l => /^\s*kind\s*:\s*Config/.test(l));
+    let doc: unknown;
+    try {
+        doc = jsYaml.load(yaml);
+    } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { valid: false, error: `Ungültiges YAML: ${msg}`, contexts: [], currentContext: '' };
+    }
 
-    if (!hasApiVersion) {
+    if (typeof doc !== 'object' || doc === null) {
+        return { valid: false, error: 'Ungültiges YAML: kein Objekt', contexts: [], currentContext: '' };
+    }
+
+    const root = doc as Record<string, unknown>;
+
+    if (!('apiVersion' in root)) {
         return { valid: false, error: '"apiVersion" fehlt — kein gültiges kubeconfig', contexts: [], currentContext: '' };
     }
-    if (!hasKind) {
+    if (root['kind'] !== 'Config') {
         return { valid: false, error: '"kind: Config" fehlt — kein gültiges kubeconfig', contexts: [], currentContext: '' };
     }
 
-    const contexts: KubeconfigContext[] = [];
-    let currentContext = '';
+    const currentContext = typeof root['current-context'] === 'string' ? root['current-context'] : '';
 
-    // State machine
-    let inContextsBlock = false;
-    let inContextItem = false;
-    let inContextDetailBlock = false;
-    let current: Partial<KubeconfigContext> = {};
-
-    for (const rawLine of lines) {
-        const trimmed = rawLine.trim();
-        if (!trimmed || trimmed.startsWith('#')) { continue; }
-
-        const indent = rawLine.search(/\S/);
-
-        // Top-level keys reset context blocks
-        if (indent === 0 && !trimmed.startsWith('-')) {
-            if (inContextItem && current.name) {
-                contexts.push({
-                    name: current.name,
-                    cluster: current.cluster ?? '',
-                    namespace: current.namespace ?? 'default',
-                });
-                current = {};
-            }
-            inContextsBlock = trimmed.startsWith('contexts:');
-            inContextItem = false;
-            inContextDetailBlock = false;
-
-            if (trimmed.startsWith('current-context:')) {
-                currentContext = extractValue(trimmed, 'current-context');
-            }
-            continue;
-        }
-
-        if (!inContextsBlock) { continue; }
-
-        // New context list item
-        if (trimmed.startsWith('- name:')) {
-            if (inContextItem && current.name) {
-                contexts.push({
-                    name: current.name,
-                    cluster: current.cluster ?? '',
-                    namespace: current.namespace ?? 'default',
-                });
-            }
-            current = { name: extractValue(trimmed, '- name') };
-            inContextItem = true;
-            inContextDetailBlock = false;
-            continue;
-        }
-
-        if (!inContextItem) { continue; }
-
-        if (trimmed === 'context:') {
-            inContextDetailBlock = true;
-            continue;
-        }
-
-        if (inContextDetailBlock) {
-            if (trimmed.startsWith('cluster:')) { current.cluster = extractValue(trimmed, 'cluster'); }
-            if (trimmed.startsWith('namespace:')) { current.namespace = extractValue(trimmed, 'namespace'); }
-        }
-    }
-
-    // Flush last item
-    if (inContextItem && current.name) {
-        contexts.push({
-            name: current.name,
-            cluster: current.cluster ?? '',
-            namespace: current.namespace ?? 'default',
-        });
-    }
+    const rawContexts = Array.isArray(root['contexts']) ? root['contexts'] : [];
+    const contexts: KubeconfigContext[] = rawContexts
+        .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+        .map(item => {
+            const name = typeof item['name'] === 'string' ? item['name'] : '';
+            const ctx = (typeof item['context'] === 'object' && item['context'] !== null)
+                ? item['context'] as Record<string, unknown>
+                : {};
+            const cluster = typeof ctx['cluster'] === 'string' ? ctx['cluster'] : '';
+            const namespace = typeof ctx['namespace'] === 'string' && ctx['namespace']
+                ? ctx['namespace']
+                : 'default';
+            return { name, cluster, namespace };
+        })
+        .filter(c => c.name !== '');
 
     return { valid: true, contexts, currentContext };
-}
-
-function extractValue(line: string, key: string): string {
-    const idx = line.indexOf(key + ':');
-    if (idx === -1) { return ''; }
-    return line.slice(idx + key.length + 1).trim().replace(/^['"]|['"]$/g, '');
 }
 
 /** Returns the namespace for the active context, or 'default' */
