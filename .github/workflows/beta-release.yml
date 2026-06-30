@@ -36,6 +36,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Cache VS Code test binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.vscode-test
+          key: vscode-test-${{ runner.os }}-${{ hashFiles('package.json') }}
+          restore-keys: vscode-test-${{ runner.os }}-
+
       - name: Quality gates
         run: |
           npx tsc --noEmit -p .

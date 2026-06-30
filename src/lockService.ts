@@ -25,6 +25,14 @@ export class LockService {
 
     constructor(private readonly secrets: vscode.SecretStorage) {}
 
+    /**
+     * Loads persisted brute-force counters from SecretStorage.
+     * Call this after construction to restore lockout state across reloads.
+     */
+    async init(): Promise<void> {
+        await this.ensureBruteForceLoaded();
+    }
+
     /** Lazily loads persisted brute-force counters from SecretStorage on first call. */
     private async ensureBruteForceLoaded(): Promise<void> {
         if (this._bruteForceLoaded) { return; }
@@ -114,6 +122,10 @@ export class LockService {
 
         // S2 — check lockout before attempting verify
         if (Date.now() < this._lockedUntil) {
+            // Still increment so escalating thresholds (5/7 attempts) are reachable
+            // even while locked out, and persist so the escalation survives reloads.
+            this._failedAttempts++;
+            await this.persistBruteForce();
             return false;
         }
 

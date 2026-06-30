@@ -204,10 +204,6 @@ suite('LockService', () => {
     });
 
     test('brute-force counters persist across LockService instances via SecretStorage', async () => {
-        // NOTE: The current implementation persists counters via `persistBruteForce`
-        // but `unlock()` does not call it; therefore in-memory state is lost when
-        // a new instance is constructed.  This test documents the actual behaviour:
-        // a new instance starts with zero counters even if the old one was locked out.
         const secrets = new FakeSecretStorage();
         const svc1 = new LockService(secrets);
         await svc1.enableLock('pass');
@@ -218,11 +214,13 @@ suite('LockService', () => {
         }
         assert.strictEqual(svc1.isLockedOut, true, 'svc1 should be locked out after 3 failures');
 
-        // A brand-new instance on the same storage starts unlocked (counters not persisted by unlock).
+        // A brand-new instance on the same storage loads the persisted lockout via init().
         const svc2 = new LockService(secrets);
-        assert.strictEqual(svc2.isLockedOut, false, 'svc2 starts with no in-memory lockout state');
-        // svc2 can still verify the password correctly since the hash/salt are in shared storage.
+        await svc2.init();
+        assert.strictEqual(svc2.isLockedOut, true, 'svc2 should reflect persisted lockout state');
+
+        // Even the correct password is rejected while locked out.
         const ok = await svc2.unlock('pass');
-        assert.strictEqual(ok, true);
+        assert.strictEqual(ok, false, 'correct password must be rejected during lockout');
     });
 });

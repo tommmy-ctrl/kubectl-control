@@ -19,6 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     const store = new ClusterStore(context);
     const lockService = new LockService(context.secrets);
+    void lockService.init(); // restore persisted brute-force counters
     const autoLockMinutes = vscode.workspace.getConfiguration('kubectl-control').get<number>('autoLockMinutes', 0);
     lockService.setAutoLock(autoLockMinutes);
     context.subscriptions.push(
