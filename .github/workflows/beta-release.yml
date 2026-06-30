@@ -1,9 +1,11 @@
 name: Beta Release (Marketplace Pre-Release)
 
 # Publishes a pre-release to the VS Code Marketplace on every push to `beta`.
+# VS Code Marketplace does NOT support SemVer pre-release identifiers (-beta.N).
+# Use odd MINOR versions for pre-release (1.1.x) and even MINOR for stable (1.2.x).
+# The --pre-release flag is what marks the build as pre-release in the Marketplace.
 # Users with the stable extension do NOT get this automatically — they must
 # explicitly click "Switch to Pre-Release Version" in the Extensions panel.
-# Users who already opted into pre-release get updates automatically.
 
 on:
   push:
@@ -56,6 +58,15 @@ jobs:
       - name: Read version from package.json
         id: ver
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Validate pre-release version (odd MINOR required)
+        run: |
+          MINOR=$(node -p "require('./package.json').version.split('.')[1]")
+          if [ $((MINOR % 2)) -eq 0 ]; then
+            echo "::error::Pre-release versions must have an odd MINOR (e.g. 1.1.x). Got MINOR=$MINOR. Use even MINOR (e.g. 1.2.x) only for stable releases."
+            exit 1
+          fi
+          echo "OK: version ${{ steps.ver.outputs.version }} has odd MINOR=$MINOR"
 
       - name: Build extension (production webpack)
         run: npm run package

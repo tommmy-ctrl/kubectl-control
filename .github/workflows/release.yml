@@ -10,8 +10,8 @@ jobs:
     name: Build, Package & Publish
     runs-on: ubuntu-latest
 
-    # Skip pre-release tags (e.g. v1.1.0-beta.1) — those are handled by
-    # beta-release.yml and must NEVER be published to the Marketplace.
+    # Only run for stable tags (even MINOR, e.g. v1.2.0).
+    # Pre-release builds use odd MINOR (1.1.x) and are handled by beta-release.yml.
     if: ${{ !contains(github.ref_name, '-') }}
 
     permissions:

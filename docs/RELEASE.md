@@ -32,12 +32,16 @@ feature/*  ──PR──▶  beta  ──(Promote-Workflow)──▶  main ─�
 
 1. Änderungen auf einem `feature/*`-Branch entwickeln, PR nach `beta`.
 2. Vor dem Merge müssen alle Gates grün sein (CI erzwingt das).
-3. Auf `beta` die Version auf eine `-beta`-Version setzen:
+3. Auf `beta` eine Version mit **ungeradem MINOR** setzen (Marketplace-Konvention):
    ```bash
-   npm version 1.1.0-beta.1 --no-git-tag-version
-   git commit -am "chore: beta 1.1.0-beta.1"
+   npm version 1.1.0 --no-git-tag-version   # ungerade Minor = Pre-Release
+   git commit -am "chore: beta 1.1.0"
    git push origin beta
    ```
+   > **Wichtig:** Der VS Code Marketplace akzeptiert **keine** SemVer-Suffixe wie `-beta.1`.
+   > Pre-Release wird durch den `--pre-release`-Flag signalisiert.
+   > Konvention: **ungerade MINOR** (1.1.x, 1.3.x) = Pre-Release, **gerade MINOR** (1.2.x, 1.4.x) = Stable.
+
 4. Der Workflow [`beta-release.yml`](../.github/workflows/beta-release.yml) läuft automatisch:
    Gates → Build → `vsce publish --pre-release` → **Marketplace Pre-Release** + GitHub-Asset.
 
@@ -45,7 +49,7 @@ feature/*  ──PR──▶  beta  ──(Promote-Workflow)──▶  main ─�
 In VS Code: **Extensions → `kubectl-control` suchen → Extension-Seite öffnen →
 „Switch to Pre-Release Version"** klicken. Ab jetzt kommen Beta-Updates automatisch.
 
-Für die nächste Beta einfach die `-beta.N` hochzählen und erneut auf `beta` pushen.
+Für den nächsten Beta-Build den PATCH erhöhen: `1.1.0` → `1.1.1` → `1.1.2` usw.
 
 ---
 

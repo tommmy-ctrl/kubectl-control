@@ -2,7 +2,7 @@
   "name": "kubectl-control",
   "displayName": "Kubectl Control",
   "description": "Manage multiple Kubernetes clusters with isolated kubeconfig terminals, group support, and encrypted export/import.",
-  "version": "1.1.0-beta.1",
+  "version": "1.1.0",
   "author": "Tom Kölsch",
   "publisher": "tommmy-ctrl",
   "license": "MIT",
