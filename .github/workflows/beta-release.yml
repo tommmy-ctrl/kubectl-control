@@ -1,8 +1,9 @@
-name: Beta Release (Pre-Release .vsix)
+name: Beta Release (Marketplace Pre-Release)
 
-# Builds a pre-release .vsix on every push to the `beta` branch and publishes it
-# as a GitHub *pre-release*. It is NOT published to the Marketplace, so users who
-# sideload the .vsix do NOT get automatic updates.
+# Publishes a pre-release to the VS Code Marketplace on every push to `beta`.
+# Users with the stable extension do NOT get this automatically — they must
+# explicitly click "Switch to Pre-Release Version" in the Extensions panel.
+# Users who already opted into pre-release get updates automatically.
 
 on:
   push:
@@ -16,11 +17,11 @@ concurrency:
 
 jobs:
   beta:
-    name: Build & Publish Beta .vsix
+    name: Build & Publish Pre-Release to Marketplace
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write   # create pre-release & upload assets
+      contents: write   # create GitHub pre-release & upload assets
 
     steps:
       - name: Checkout
@@ -49,13 +50,6 @@ jobs:
         id: ver
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: Fail if version is not a -beta version
-        run: |
-          case "${{ steps.ver.outputs.version }}" in
-            *-beta*) echo "OK: ${{ steps.ver.outputs.version }}" ;;
-            *) echo "::error::package.json version '${{ steps.ver.outputs.version }}' must contain '-beta' on the beta branch"; exit 1 ;;
-          esac
-
       - name: Build extension (production webpack)
         run: npm run package
 
@@ -70,7 +64,12 @@ jobs:
       - name: Package pre-release .vsix
         run: vsce package --pre-release --out kubectl-control-${{ steps.ver.outputs.version }}.vsix
 
-      - name: Create / update GitHub Pre-Release
+      - name: Publish pre-release to VS Code Marketplace
+        run: vsce publish --pre-release --packagePath kubectl-control-${{ steps.ver.outputs.version }}.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Create / update GitHub Pre-Release (for traceability)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.version }}
@@ -79,8 +78,7 @@ jobs:
           generate_release_notes: true
           files: kubectl-control-${{ steps.ver.outputs.version }}.vsix
           body: |
-            ⚠️ **Beta / Pre-Release.** Manuell installieren:
-            `code --install-extension kubectl-control-${{ steps.ver.outputs.version }}.vsix`
-            oder in VS Code: Extensions ▸ „…" ▸ *Install from VSIX…*
+            Dieser Build ist auch im **VS Code Marketplace** als Pre-Release verfügbar.
+            In VS Code: Extension-Seite öffnen → **„Switch to Pre-Release Version"**
 
-            Sideloads aus einer `.vsix` werden von VS Code **nicht automatisch aktualisiert**.
+            Nutzer der Stable-Version werden **nicht automatisch** aktualisiert.
