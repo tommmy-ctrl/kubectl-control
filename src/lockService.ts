@@ -122,9 +122,14 @@ export class LockService {
 
         // S2 — check lockout before attempting verify
         if (Date.now() < this._lockedUntil) {
-            // Still increment so escalating thresholds (5/7 attempts) are reachable
-            // even while locked out, and persist so the escalation survives reloads.
+            // Increment counter and re-evaluate duration so escalating thresholds
+            // (5 → 30s, 7 → 60s) are reached even during an active lockout.
             this._failedAttempts++;
+            let lockMs = 0;
+            if (this._failedAttempts >= 7)      { lockMs = 60_000; }
+            else if (this._failedAttempts >= 5) { lockMs = 30_000; }
+            else if (this._failedAttempts >= 3) { lockMs = 10_000; }
+            if (lockMs > 0) { this._lockedUntil = Date.now() + lockMs; }
             await this.persistBruteForce();
             return false;
         }
