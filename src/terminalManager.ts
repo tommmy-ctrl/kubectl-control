@@ -66,19 +66,27 @@ export function buildPromptCommand(name: string, shell: ShellType | undefined, c
     const label = `kubectl@${safe} > `;
     const rgb = hexToRgb(color);
 
-    if (shell === 'powershell') {
+    // 'default'/undefined: the shell is whatever VS Code launches. Guess from the
+    // extension host platform — win32 → PowerShell, otherwise a POSIX shell (bash).
+    // For Remote-SSH the extension host runs on the remote, so this matches too.
+    let effective: ShellType = shell ?? 'default';
+    if (effective === 'default') {
+        effective = process.platform === 'win32' ? 'powershell' : 'bash';
+    }
+
+    if (effective === 'powershell') {
         // Self-contained: $([char]27) yields ESC at render time; works on PS 5.1 and 7.
         if (!rgb) { return `function prompt { "${label}" }`; }
         const esc = '$([char]27)';
         return `function prompt { "${esc}[38;2;${rgb.r};${rgb.g};${rgb.b}m${label}${esc}[0m" }`;
     }
 
-    if (shell === 'cmd') {
+    if (effective === 'cmd') {
         // cmd: $G is '>'; no reliable colour support, so text only.
         return `prompt kubectl@${safe} $G `;
     }
 
-    if (shell === 'zsh') {
+    if (effective === 'zsh') {
         if (!rgb) { return `export PS1='${label}'`; }
         // zsh: %{ %} wrap non-printing sequences; \e is emitted via the literal ESC below.
         return `export PS1=$'%{\\e[38;2;${rgb.r};${rgb.g};${rgb.b}m%}${label}%{\\e[0m%}'`;

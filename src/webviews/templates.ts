@@ -481,6 +481,18 @@ export function formHtml(nonce: string, cspSource: string, version = 'unknown'):
         .btn-row { display: flex; gap: 7px; margin-top: 2px; }
         .btn-row .btn-primary { flex: 1; }
         #contextGroup { display: none; }
+        .prompt-color-row { display: flex; align-items: center; gap: 12px; }
+        .checkbox-inline {
+            display: flex; align-items: center; gap: 7px; cursor: pointer;
+            font-size: 0.85rem; color: var(--vscode-foreground); user-select: none;
+        }
+        .checkbox-inline input { cursor: pointer; margin: 0; }
+        #promptColor {
+            width: 46px; height: 28px; padding: 2px; flex: 0 0 auto;
+            border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.12));
+            border-radius: 4px; background: var(--vscode-input-background); cursor: pointer;
+        }
+        #promptColor:disabled { opacity: 0.4; cursor: not-allowed; }
         .version-footer {
             margin-top: 14px; padding-top: 8px;
             border-top: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.06));
@@ -523,11 +535,14 @@ export function formHtml(nonce: string, cspSource: string, version = 'unknown'):
 
         <div class="field-group">
             <label class="field-label">Terminal-Prompt-Farbe <span style="opacity:0.5">(optional)</span></label>
-            <div style="display:flex;align-items:center;gap:8px">
-                <input type="checkbox" id="promptColorEnabled">
-                <input type="color" id="promptColor" value="#4ec9b0" disabled>
-                <span class="field-hint" style="margin:0">Färbt den <code>kubectl@Name &gt;</code>-Prompt</span>
+            <div class="prompt-color-row">
+                <label class="checkbox-inline">
+                    <input type="checkbox" id="promptColorEnabled">
+                    <span>Prompt einfärben</span>
+                </label>
+                <input type="color" id="promptColor" value="#4ec9b0" disabled title="Farbe wählen">
             </div>
+            <span class="field-hint">Färbt den <code>kubectl@Name &gt;</code>-Prompt im Terminal.</span>
         </div>
 
         <div class="field-group">
