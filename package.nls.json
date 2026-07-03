@@ -23,5 +23,6 @@
   "command.authCanIVerb": "Kubectl Control: Berechtigung prüfen (can-i)",
   "config.autoLockMinutes.description": "Minuten bis zur automatischen Sperrung bei Inaktivität (0 = deaktiviert)",
   "config.statusCheckIntervalSeconds.description": "Intervall in Sekunden für den automatischen Cluster-Statuscheck (0 = deaktiviert)",
+  "config.customTerminalPrompt.description": "Setzt in Terminals einen Prompt „kubectl@<Verbindungsname> >\" (bash/zsh/PowerShell; cmd ohne Farbe). Farbe pro Verbindung einstellbar.",
   "view.connectionsView.name": "Verbindungen"
 }

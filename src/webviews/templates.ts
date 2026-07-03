@@ -513,6 +513,15 @@ export function formHtml(nonce: string, cspSource: string): string {
         </div>
 
         <div class="field-group">
+            <label class="field-label">Terminal-Prompt-Farbe <span style="opacity:0.5">(optional)</span></label>
+            <div style="display:flex;align-items:center;gap:8px">
+                <input type="checkbox" id="promptColorEnabled">
+                <input type="color" id="promptColor" value="#4ec9b0" disabled>
+                <span class="field-hint" style="margin:0">Färbt den <code>kubectl@Name &gt;</code>-Prompt</span>
+            </div>
+        </div>
+
+        <div class="field-group">
             <label class="field-label" for="kubeconfigData">Kubeconfig</label>
             <div class="textarea-wrap">
                 <textarea id="kubeconfigData" placeholder="apiVersion: v1&#10;kind: Config&#10;clusters:&#10;  - …"></textarea>
@@ -542,6 +551,8 @@ export function formHtml(nonce: string, cspSource: string): string {
         const editId       = document.getElementById('editId');
         const groupInput   = document.getElementById('groupInput');
         const shellSelect  = document.getElementById('shellSelect');
+        const promptColorEnabled = document.getElementById('promptColorEnabled');
+        const promptColor  = document.getElementById('promptColor');
         const contextGroup = document.getElementById('contextGroup');
         const contextSelect= document.getElementById('contextSelect');
         const namespaceHint= document.getElementById('namespaceHint');
@@ -589,6 +600,12 @@ export function formHtml(nonce: string, cspSource: string): string {
             namespaceHint.textContent = selected ? 'Namespace: ' + (selected.namespace || 'default') : '';
         }
 
+        // ── Prompt colour toggle ─────────────────────────────────────────────
+
+        promptColorEnabled.addEventListener('change', () => {
+            promptColor.disabled = !promptColorEnabled.checked;
+        });
+
         // ── kubeconfig parsing (debounced) ───────────────────────────────────
 
         function scheduleParseKubeconfig() {
@@ -612,12 +629,20 @@ export function formHtml(nonce: string, cspSource: string): string {
 
         // ── Edit mode ────────────────────────────────────────────────────────
 
-        function enterEditMode(id, name, config, group, shell) {
+        function enterEditMode(id, name, config, group, shell, promptColorValue) {
             editId.value = id;
             clusterName.value = name;
             kubeconfigEl.value = config;
             groupInput.value = group || '';
             shellSelect.value = shell || 'default';
+            if (promptColorValue) {
+                promptColorEnabled.checked = true;
+                promptColor.disabled = false;
+                promptColor.value = promptColorValue;
+            } else {
+                promptColorEnabled.checked = false;
+                promptColor.disabled = true;
+            }
             submitBtn.textContent = 'Änderungen speichern';
             cancelBtn.style.display = '';
             formTitle.textContent = name;
@@ -629,6 +654,7 @@ export function formHtml(nonce: string, cspSource: string): string {
         function exitEditMode() {
             editId.value = ''; clusterName.value = ''; kubeconfigEl.value = '';
             groupInput.value = ''; shellSelect.value = 'default';
+            promptColorEnabled.checked = false; promptColor.disabled = true; promptColor.value = '#4ec9b0';
             submitBtn.textContent = 'Verbindung speichern';
             cancelBtn.style.display = 'none';
             formTitle.textContent = 'Neue Verbindung';
@@ -650,6 +676,7 @@ export function formHtml(nonce: string, cspSource: string): string {
                 group:         groupInput.value.trim(),
                 shell:         shellSelect.value,
                 activeContext: contextSelect.value || '',
+                promptColor:   promptColorEnabled.checked ? promptColor.value : '',
             };
             vscode.postMessage(editId.value
                 ? { command: 'updateCluster', id: editId.value, ...payload }
@@ -663,7 +690,7 @@ export function formHtml(nonce: string, cspSource: string): string {
         window.addEventListener('message', event => {
             const msg = event.data;
             if (msg.command === 'prefillEdit') {
-                enterEditMode(msg.id, msg.name, msg.kubeconfigData, msg.group, msg.shell);
+                enterEditMode(msg.id, msg.name, msg.kubeconfigData, msg.group, msg.shell, msg.promptColor);
             }
             if (msg.command === 'kubeconfigParsed') {
                 const r = msg.result;

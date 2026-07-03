@@ -22,6 +22,8 @@ export interface ClusterProfile {
     pinned?: boolean;
     lastUsed?: number;
     isProd?: boolean;
+    /** Optional per-connection prompt colour as a #rrggbb hex string. */
+    promptColor?: string;
 }
 
 /** On-disk envelope wrapping the cluster array with a schema version. */
@@ -37,7 +39,11 @@ export interface AddClusterOptions {
     shell?: ShellType;
     namespace?: string;
     activeContext?: string;
+    promptColor?: string;
 }
+
+/** Matches a #rrggbb hex colour (the only format accepted for prompt colours). */
+const PROMPT_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
 
 /** Sanitizes a raw imported cluster profile. Returns null if essential fields are missing. */
 function sanitizeImportedCluster(cluster: ClusterProfile): ClusterProfile | null {
@@ -66,7 +72,16 @@ function sanitizeImportedCluster(cluster: ClusterProfile): ClusterProfile | null
         }
     }
 
-    return { ...cluster, name, group, activeContext, shell };
+    let promptColor: string | undefined;
+    if (cluster.promptColor != null) {
+        if (PROMPT_COLOR_REGEX.test(cluster.promptColor)) {
+            promptColor = cluster.promptColor;
+        } else if (cluster.promptColor) {
+            log.warn(`importClusters: dropping invalid promptColor "${cluster.promptColor}" for cluster "${name}"`);
+        }
+    }
+
+    return { ...cluster, name, group, activeContext, shell, promptColor };
 }
 
 /**
@@ -143,6 +158,7 @@ export class ClusterStore {
                 shell: opts.shell,
                 namespace: opts.namespace,
                 activeContext: opts.activeContext,
+                promptColor: opts.promptColor && PROMPT_COLOR_REGEX.test(opts.promptColor) ? opts.promptColor : undefined,
             };
             clusters.push(profile);
             await this.save(clusters);

@@ -4,12 +4,58 @@ import { TerminalManager } from './terminalManager';
 import { log } from './logger';
 import { execWithKubeconfig } from './kubectlExec';
 
-export type ClusterStatus = 'reachable' | 'unreachable' | 'unknown';
+export type ClusterStatus = 'reachable' | 'unreachable' | 'unauthorized' | 'unknown';
 
 /** After this many consecutive unreachable checks, backoff kicks in. */
 const BACKOFF_THRESHOLD = 3;
 /** Maximum backoff multiplier (caps at ~10x normal interval). */
 const MAX_BACKOFF_MULTIPLIER = 10;
+
+/**
+ * Classify an error text from a failed kubectl call.
+ *
+ * @returns
+ *   - `'unauthorized'`        – token expired / not authenticated
+ *   - `'retry-with-clusterinfo'` – `auth whoami` not supported by this cluster/kubectl version
+ *   - `'unreachable'`         – network, TLS, timeout, or other connectivity problem
+ */
+function classifyError(text: string): 'unauthorized' | 'unreachable' | 'retry-with-clusterinfo' {
+    const lower = text.toLowerCase();
+
+    // Auth / token problems
+    if (
+        lower.includes('unauthenticated') ||
+        lower.includes('unauthorized') ||
+        lower.includes('you must be logged in') ||
+        lower.includes('anonymous')
+    ) {
+        return 'unauthorized';
+    }
+
+    // `kubectl auth whoami` not available (older kubectl or cluster without SelfSubjectReview)
+    if (
+        lower.includes('unknown command') ||
+        lower.includes('unknown flag') ||
+        lower.includes("doesn't have a resource type") ||
+        lower.includes('selfsubjectreview') ||
+        lower.includes('the server could not find the requested resource') ||
+        lower.includes('error: unknown')
+    ) {
+        return 'retry-with-clusterinfo';
+    }
+
+    // Everything else (network, x509, timeout, DNS, connection refused, …)
+    return 'unreachable';
+}
+
+/** Combine all text fields that execFile errors may carry. */
+function errorText(err: unknown): string {
+    if (err instanceof Error) {
+        const e = err as Error & { stderr?: string; stdout?: string };
+        return [e.message, e.stderr ?? '', e.stdout ?? ''].join('\n');
+    }
+    return String(err);
+}
 
 export class ClusterStatusService implements vscode.Disposable {
     private readonly _statuses = new Map<string, ClusterStatus>();
@@ -21,10 +67,16 @@ export class ClusterStatusService implements vscode.Disposable {
     private readonly _inFlight = new Set<string>();
 
     // Per-cluster backoff state
-    /** Number of consecutive unreachable checks per cluster id. */
+    /** Number of consecutive unreachable/unauthorized checks per cluster id. */
     private readonly _consecutiveFailures = new Map<string, number>();
     /** How many poll ticks have elapsed (used to compute backoff skips). */
     private _tickCount = 0;
+
+    /**
+     * Tracks cluster ids for which an "unauthorized" warning has already been shown.
+     * Cleared when the cluster becomes reachable again so the next outage re-notifies.
+     */
+    private readonly _authNotified = new Set<string>();
 
     constructor(
         private readonly store: ClusterStore,
@@ -78,7 +130,7 @@ export class ClusterStatusService implements vscode.Disposable {
 
     async checkAll(): Promise<void> {
         const clusters = await this.store.getClusters();
-        await Promise.all(clusters.map(c => this._maybeCheckOne(c.id, c.kubeconfigData, c.activeContext)));
+        await Promise.all(clusters.map(c => this._maybeCheckOne(c.id, c.kubeconfigData, c.activeContext, c.name ?? c.id)));
     }
 
     /**
@@ -96,14 +148,14 @@ export class ClusterStatusService implements vscode.Disposable {
         return this._tickCount % multiplier !== 0;
     }
 
-    private async _maybeCheckOne(id: string, kubeconfigData: string, context?: string): Promise<void> {
+    private async _maybeCheckOne(id: string, kubeconfigData: string, context?: string, name?: string): Promise<void> {
         if (this._shouldSkipForBackoff(id)) {
             return;
         }
-        return this.checkOne(id, kubeconfigData, context);
+        return this.checkOne(id, kubeconfigData, context, name ?? id);
     }
 
-    private async checkOne(id: string, kubeconfigData: string, context?: string): Promise<void> {
+    private async checkOne(id: string, kubeconfigData: string, context?: string, name: string = id): Promise<void> {
         // BUG FIX: skip if a check for this cluster is already running
         if (this._inFlight.has(id)) {
             return;
@@ -111,25 +163,95 @@ export class ClusterStatusService implements vscode.Disposable {
         this._inFlight.add(id);
 
         try {
-            await execWithKubeconfig(
-                kubeconfigData,
-                context,
-                ['cluster-info', '--request-timeout=3s'],
-                5000,
-            );
-            this._statuses.set(id, 'reachable');
-            // Reset failure counter on success
-            this._consecutiveFailures.set(id, 0);
-        } catch (err) {
-            // execWithKubeconfig throws on invalid context — treat as unreachable
-            this._statuses.set(id, 'unreachable');
-            const prev = this._consecutiveFailures.get(id) ?? 0;
-            this._consecutiveFailures.set(id, prev + 1);
-            log.warn(`Cluster ${id} unreachable (consecutive failures: ${prev + 1})`, err);
+            const newStatus = await this._determineStatus(id, kubeconfigData, context, name);
+            const prevStatus = this._statuses.get(id);
+
+            this._statuses.set(id, newStatus);
+
+            if (newStatus === 'reachable') {
+                this._consecutiveFailures.set(id, 0);
+                // Allow re-notification on next unauthorized event
+                this._authNotified.delete(id);
+            } else {
+                const prev = this._consecutiveFailures.get(id) ?? 0;
+                this._consecutiveFailures.set(id, prev + 1);
+                log.warn(`Cluster ${id} status: ${newStatus} (consecutive failures: ${prev + 1})`);
+
+                // Notify once when a cluster newly becomes unauthorized
+                if (newStatus === 'unauthorized' && prevStatus !== 'unauthorized' && !this._authNotified.has(id)) {
+                    this._authNotified.add(id);
+                    this._notifyUnauthorized(name);
+                }
+            }
         } finally {
             this._inFlight.delete(id);
             this._onDidChange.fire();
         }
+    }
+
+    /**
+     * Run `kubectl auth whoami` with a fallback to `kubectl cluster-info`.
+     * Returns the resolved ClusterStatus without touching instance state.
+     */
+    private async _determineStatus(
+        id: string,
+        kubeconfigData: string,
+        context: string | undefined,
+        name: string,
+    ): Promise<ClusterStatus> {
+        // Primary: auth-validating check
+        try {
+            await execWithKubeconfig(
+                kubeconfigData,
+                context,
+                ['auth', 'whoami', '-o', 'json', '--request-timeout=3s'],
+                5000,
+            );
+            return 'reachable';
+        } catch (whoamiErr) {
+            const classification = classifyError(errorText(whoamiErr));
+
+            if (classification === 'unauthorized') {
+                return 'unauthorized';
+            }
+
+            if (classification === 'retry-with-clusterinfo') {
+                // Fallback: cluster may not support SelfSubjectReview — use classic check
+                try {
+                    await execWithKubeconfig(
+                        kubeconfigData,
+                        context,
+                        ['cluster-info', '--request-timeout=3s'],
+                        5000,
+                    );
+                    return 'reachable';
+                } catch (clusterInfoErr) {
+                    const fallbackClassification = classifyError(errorText(clusterInfoErr));
+                    if (fallbackClassification === 'unauthorized') {
+                        return 'unauthorized';
+                    }
+                    return 'unreachable';
+                }
+            }
+
+            // classification === 'unreachable'
+            return 'unreachable';
+        }
+    }
+
+    /** Show a one-time warning notification when a cluster's token has expired. */
+    private _notifyUnauthorized(name: string): void {
+        const msg = vscode.l10n.t(
+            'Verbindung „{0}": Token abgelaufen oder ungültig (nicht authentifiziert). Bitte Kubeconfig neu importieren.',
+            name,
+        );
+        const openBtn = vscode.l10n.t('Verbindungen öffnen');
+
+        vscode.window.showWarningMessage(msg, openBtn).then(selection => {
+            if (selection === openBtn) {
+                vscode.commands.executeCommand('kubectl-control.connectionsView.focus');
+            }
+        });
     }
 
     dispose(): void {

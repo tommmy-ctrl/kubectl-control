@@ -32,6 +32,64 @@ function isSafeContextName(name: string): boolean {
     return /^[a-zA-Z0-9._/@:-]{1,253}$/.test(name);
 }
 
+/**
+ * Reduce a free-form connection name to a set of characters that are safe to
+ * embed inside a single-quoted shell PS1 assignment. Strips quotes, backslashes
+ * and control characters so the name can never break out of the assignment.
+ */
+function sanitizePromptName(name: string): string {
+    return name.replace(/[^\p{L}\p{N} ._@-]/gu, '').trim().slice(0, 40) || 'cluster';
+}
+
+/** Parse a #rrggbb hex string into its numeric r/g/b components, or undefined. */
+function hexToRgb(hex?: string): { r: number; g: number; b: number } | undefined {
+    if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) { return undefined; }
+    return {
+        r: parseInt(hex.slice(1, 3), 16),
+        g: parseInt(hex.slice(3, 5), 16),
+        b: parseInt(hex.slice(5, 7), 16),
+    };
+}
+
+/**
+ * Build a shell command that sets a `kubectl@<name> >` prompt for the session.
+ * The name is sanitized; the colour is an optional #rrggbb hex string rendered as
+ * a 24-bit ANSI truecolor sequence.
+ *   - bash/default & zsh use their respective non-printing markers so line
+ *     wrapping stays correct.
+ *   - PowerShell overrides the `prompt` function (colour supported via ANSI).
+ *   - cmd sets the prompt text only (no colour — cmd cannot reliably embed ANSI).
+ * Returns undefined only if a prompt cannot be set for the shell.
+ */
+export function buildPromptCommand(name: string, shell: ShellType | undefined, color?: string): string | undefined {
+    const safe = sanitizePromptName(name);
+    const label = `kubectl@${safe} > `;
+    const rgb = hexToRgb(color);
+
+    if (shell === 'powershell') {
+        // Self-contained: $([char]27) yields ESC at render time; works on PS 5.1 and 7.
+        if (!rgb) { return `function prompt { "${label}" }`; }
+        const esc = '$([char]27)';
+        return `function prompt { "${esc}[38;2;${rgb.r};${rgb.g};${rgb.b}m${label}${esc}[0m" }`;
+    }
+
+    if (shell === 'cmd') {
+        // cmd: $G is '>'; no reliable colour support, so text only.
+        return `prompt kubectl@${safe} $G `;
+    }
+
+    if (shell === 'zsh') {
+        if (!rgb) { return `export PS1='${label}'`; }
+        // zsh: %{ %} wrap non-printing sequences; \e is emitted via the literal ESC below.
+        return `export PS1=$'%{\\e[38;2;${rgb.r};${rgb.g};${rgb.b}m%}${label}%{\\e[0m%}'`;
+    }
+
+    // bash and 'default' (assume a POSIX login shell, typically bash over SSH).
+    if (!rgb) { return `export PS1='${label}'`; }
+    // bash PS1 interprets \e (ESC) and \[ \] (non-printing) at render time.
+    return `export PS1='\\[\\e[38;2;${rgb.r};${rgb.g};${rgb.b}m\\]${label}\\[\\e[0m\\]'`;
+}
+
 export class TerminalManager implements vscode.Disposable {
     private readonly openTerminals = new Map<string, vscode.Terminal>();
     private readonly terminalOpenedAt = new Map<string, number>();
@@ -228,6 +286,17 @@ export class TerminalManager implements vscode.Disposable {
                     vscode.window.showWarningMessage(
                         vscode.l10n.t('Context "{0}" enthält ungültige Zeichen und wurde nicht automatisch gesetzt.', profile.activeContext),
                     );
+                }
+            }
+
+            // Set a per-connection prompt (kubectl@<name> >) unless disabled.
+            const promptEnabled = vscode.workspace
+                .getConfiguration('kubectl-control')
+                .get<boolean>('customTerminalPrompt', true);
+            if (promptEnabled) {
+                const promptCmd = buildPromptCommand(profile.name, profile.shell, profile.promptColor);
+                if (promptCmd) {
+                    terminal.sendText(promptCmd);
                 }
             }
 

@@ -51,6 +51,7 @@ export function registerCommands(
             item.profile.kubeconfigData,
             item.profile.group,
             item.profile.shell,
+            item.profile.promptColor,
         );
         await vscode.commands.executeCommand('kubectl-control.connectionsView.focus');
     });

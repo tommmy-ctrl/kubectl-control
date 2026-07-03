@@ -129,6 +129,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
             shell: (msg.shell as ShellType) || undefined,
             namespace,
             activeContext: msg.activeContext || parsed.currentContext || undefined,
+            promptColor: (msg.promptColor ?? '').trim() || undefined,
         });
         log.info(`Cluster added via form: "${name}"`);
         this.onChanged();
@@ -152,6 +153,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
             shell: (msg.shell as ShellType) || undefined,
             namespace,
             activeContext: msg.activeContext || parsed.currentContext || undefined,
+            promptColor: (msg.promptColor ?? '').trim() || undefined,
         });
         log.info(`Cluster updated via form: "${name}"`);
         this.onChanged();
@@ -182,9 +184,9 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    public prefillEdit(id: string, name: string, kubeconfigData: string, group?: string, shell?: string): void {
+    public prefillEdit(id: string, name: string, kubeconfigData: string, group?: string, shell?: string, promptColor?: string): void {
         if (!this.view) { return; }
-        void this.view.webview.postMessage({ command: 'prefillEdit', id, name, kubeconfigData, group, shell });
+        void this.view.webview.postMessage({ command: 'prefillEdit', id, name, kubeconfigData, group, shell, promptColor });
     }
 
     // ── HTML ────────────────────────────────────────────────────────────────
