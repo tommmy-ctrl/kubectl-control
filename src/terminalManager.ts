@@ -61,18 +61,35 @@ function hexToRgb(hex?: string): { r: number; g: number; b: number } | undefined
  *   - cmd sets the prompt text only (no colour — cmd cannot reliably embed ANSI).
  * Returns undefined only if a prompt cannot be set for the shell.
  */
+/**
+ * Resolve 'default'/undefined to a concrete shell. The shell is whatever VS Code
+ * launches; guess from the extension host platform — win32 → PowerShell, otherwise
+ * a POSIX shell (bash). For Remote-SSH the extension host runs on the remote, so
+ * this matches the remote's default shell too.
+ */
+function resolveEffectiveShell(shell: ShellType | undefined): ShellType {
+    const s = shell ?? 'default';
+    if (s === 'default') {
+        return process.platform === 'win32' ? 'powershell' : 'bash';
+    }
+    return s;
+}
+
+/** Command that clears the terminal screen for the given (resolved) shell. */
+export function buildClearCommand(shell: ShellType | undefined): string {
+    switch (resolveEffectiveShell(shell)) {
+        case 'powershell': return 'Clear-Host';
+        case 'cmd':        return 'cls';
+        default:           return 'clear';
+    }
+}
+
 export function buildPromptCommand(name: string, shell: ShellType | undefined, color?: string): string | undefined {
     const safe = sanitizePromptName(name);
     const label = `kubectl@${safe} > `;
     const rgb = hexToRgb(color);
 
-    // 'default'/undefined: the shell is whatever VS Code launches. Guess from the
-    // extension host platform — win32 → PowerShell, otherwise a POSIX shell (bash).
-    // For Remote-SSH the extension host runs on the remote, so this matches too.
-    let effective: ShellType = shell ?? 'default';
-    if (effective === 'default') {
-        effective = process.platform === 'win32' ? 'powershell' : 'bash';
-    }
+    const effective = resolveEffectiveShell(shell);
 
     if (effective === 'powershell') {
         // Self-contained: $([char]27) yields ESC at render time; works on PS 5.1 and 7.
@@ -279,9 +296,9 @@ export class TerminalManager implements vscode.Disposable {
                 },
             });
 
-            if (profile.isProd === true) {
-                terminal.sendText(`echo "${vscode.l10n.t('⚠️  ACHTUNG: Dies ist eine PRODUKTIONSUMGEBUNG ({0}). Änderungen wirken sich direkt aus.', profile.name)}"`);
-            }
+            // Track whether we sent any setup commands, so we can clear their
+            // echoes from the screen afterwards for a clean starting terminal.
+            let sentSetup = false;
 
             // If a specific context is selected, set it automatically.
             // Validate the name first — it originates from imported kubeconfig data
@@ -289,6 +306,7 @@ export class TerminalManager implements vscode.Disposable {
             if (profile.activeContext) {
                 if (isSafeContextName(profile.activeContext)) {
                     terminal.sendText(`kubectl config use-context ${profile.activeContext}`);
+                    sentSetup = true;
                 } else {
                     log.warn(`Skipping auto use-context: unsafe context name "${profile.activeContext}"`);
                     vscode.window.showWarningMessage(
@@ -305,7 +323,21 @@ export class TerminalManager implements vscode.Disposable {
                 const promptCmd = buildPromptCommand(profile.name, profile.shell, profile.promptColor);
                 if (promptCmd) {
                     terminal.sendText(promptCmd);
+                    sentSetup = true;
                 }
+            }
+
+            // Wipe the setup-command echoes so the terminal starts clean.
+            if (sentSetup) {
+                terminal.sendText(buildClearCommand(profile.shell));
+            }
+
+            // Prod warning is sent last so it stays visible on the cleared screen.
+            // The name is sanitized (no quotes/$/backtick/backslash) so it cannot
+            // break out of the echo argument in any shell.
+            if (profile.isProd === true) {
+                const safeName = sanitizePromptName(profile.name);
+                terminal.sendText(`echo "${vscode.l10n.t('⚠️  ACHTUNG: Dies ist eine PRODUKTIONSUMGEBUNG ({0}). Änderungen wirken sich direkt aus.', safeName)}"`);
             }
 
             this.openTerminals.set(profile.id, terminal);

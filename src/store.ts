@@ -174,6 +174,10 @@ export class ClusterStore {
             const clusters = await this.getClusters();
             const idx = clusters.findIndex(c => c.id === id);
             if (idx === -1) { log.warn(`updateCluster: id not found: ${id}`); return; }
+            // Drop an invalid prompt colour so the store never holds a non-#rrggbb value.
+            if ('promptColor' in updates && updates.promptColor !== undefined && !PROMPT_COLOR_REGEX.test(updates.promptColor)) {
+                updates = { ...updates, promptColor: undefined };
+            }
             clusters[idx] = { ...clusters[idx], ...updates };
             await this.save(clusters);
             log.info(`Cluster updated: "${clusters[idx].name}" (id=${id})`);
