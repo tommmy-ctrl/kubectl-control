@@ -19,7 +19,8 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         private readonly extensionUri: vscode.Uri,
         private readonly store: ClusterStore,
         private readonly lockService: LockService,
-        private readonly onChanged: () => void
+        private readonly onChanged: () => void,
+        private readonly version: string = 'unknown'
     ) {
         lockService.onStateChange(() => void this.refresh());
     }
@@ -200,7 +201,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
     }
 
     private getFormHtml(webview: vscode.Webview): string {
-        return formHtml(getNonce(), webview.cspSource);
+        return formHtml(getNonce(), webview.cspSource, this.version);
     }
 }
 

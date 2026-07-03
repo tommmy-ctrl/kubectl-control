@@ -15,7 +15,8 @@ import { registerHelmBrowser } from './features/helmBrowser';
 import { registerRbacViewer } from './features/rbacViewer';
 
 export function activate(context: vscode.ExtensionContext) {
-    log.info('kubectl-control activating…');
+    const extensionVersion = String(context.extension.packageJSON.version ?? 'unknown');
+    log.info(`kubectl-control activating… v${extensionVersion}`);
 
     const store = new ClusterStore(context);
     const lockService = new LockService(context.secrets);
@@ -35,7 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
     const clusterStatusService = new ClusterStatusService(store, terminalManager);
     const treeProvider = new ClusterTreeDataProvider(store, terminalManager, lockService, clusterStatusService);
     const connectionsViewProvider = new ConnectionsViewProvider(
-        context.extensionUri, store, lockService, () => treeProvider.refresh()
+        context.extensionUri, store, lockService, () => treeProvider.refresh(), extensionVersion
     );
 
     const welcomeMode = !isSetupDone(context);

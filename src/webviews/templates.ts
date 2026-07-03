@@ -419,7 +419,9 @@ export function lockHtml(nonce: string, cspSource: string): string {
 
 // ── Cluster add/edit form ─────────────────────────────────────────────────────
 
-export function formHtml(nonce: string, cspSource: string): string {
+export function formHtml(nonce: string, cspSource: string, version = 'unknown'): string {
+    // version originates from package.json (semver); restrict to a safe charset defensively.
+    const safeVersion = String(version).replace(/[^0-9A-Za-z.+-]/g, '').slice(0, 40) || 'unknown';
     return `<!DOCTYPE html>
 <html lang="de">
 <head>
@@ -479,6 +481,13 @@ export function formHtml(nonce: string, cspSource: string): string {
         .btn-row { display: flex; gap: 7px; margin-top: 2px; }
         .btn-row .btn-primary { flex: 1; }
         #contextGroup { display: none; }
+        .version-footer {
+            margin-top: 14px; padding-top: 8px;
+            border-top: 1px solid var(--vscode-sideBarSectionHeader-border, rgba(255,255,255,0.06));
+            font-size: 0.68rem; text-align: right;
+            color: var(--vscode-descriptionForeground); opacity: 0.55;
+            user-select: text;
+        }
     </style>
 </head>
 <body>
@@ -542,6 +551,8 @@ export function formHtml(nonce: string, cspSource: string): string {
             <button type="button" class="btn-ghost" id="cancelBtn" style="display:none">Abbrechen</button>
         </div>
     </form>
+
+    <div class="version-footer" title="Installierte Version von kubectl-control">kubectl-control v${safeVersion}</div>
 
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
