@@ -32,6 +32,89 @@ function isSafeContextName(name: string): boolean {
     return /^[a-zA-Z0-9._/@:-]{1,253}$/.test(name);
 }
 
+/**
+ * Reduce a free-form connection name to a set of characters that are safe to
+ * embed inside a single-quoted shell PS1 assignment. Strips quotes, backslashes
+ * and control characters so the name can never break out of the assignment.
+ */
+function sanitizePromptName(name: string): string {
+    return name.replace(/[^\p{L}\p{N} ._@-]/gu, '').trim().slice(0, 40) || 'cluster';
+}
+
+/** Parse a #rrggbb hex string into its numeric r/g/b components, or undefined. */
+function hexToRgb(hex?: string): { r: number; g: number; b: number } | undefined {
+    if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) { return undefined; }
+    return {
+        r: parseInt(hex.slice(1, 3), 16),
+        g: parseInt(hex.slice(3, 5), 16),
+        b: parseInt(hex.slice(5, 7), 16),
+    };
+}
+
+/**
+ * Build a shell command that sets a `kubectl@<name> >` prompt for the session.
+ * The name is sanitized; the colour is an optional #rrggbb hex string rendered as
+ * a 24-bit ANSI truecolor sequence.
+ *   - bash/default & zsh use their respective non-printing markers so line
+ *     wrapping stays correct.
+ *   - PowerShell overrides the `prompt` function (colour supported via ANSI).
+ *   - cmd sets the prompt text only (no colour — cmd cannot reliably embed ANSI).
+ * Returns undefined only if a prompt cannot be set for the shell.
+ */
+/**
+ * Resolve 'default'/undefined to a concrete shell. The shell is whatever VS Code
+ * launches; guess from the extension host platform — win32 → PowerShell, otherwise
+ * a POSIX shell (bash). For Remote-SSH the extension host runs on the remote, so
+ * this matches the remote's default shell too.
+ */
+function resolveEffectiveShell(shell: ShellType | undefined): ShellType {
+    const s = shell ?? 'default';
+    if (s === 'default') {
+        return process.platform === 'win32' ? 'powershell' : 'bash';
+    }
+    return s;
+}
+
+/** Command that clears the terminal screen for the given (resolved) shell. */
+export function buildClearCommand(shell: ShellType | undefined): string {
+    switch (resolveEffectiveShell(shell)) {
+        case 'powershell': return 'Clear-Host';
+        case 'cmd':        return 'cls';
+        default:           return 'clear';
+    }
+}
+
+export function buildPromptCommand(name: string, shell: ShellType | undefined, color?: string): string | undefined {
+    const safe = sanitizePromptName(name);
+    const label = `kubectl@${safe} > `;
+    const rgb = hexToRgb(color);
+
+    const effective = resolveEffectiveShell(shell);
+
+    if (effective === 'powershell') {
+        // Self-contained: $([char]27) yields ESC at render time; works on PS 5.1 and 7.
+        if (!rgb) { return `function prompt { "${label}" }`; }
+        const esc = '$([char]27)';
+        return `function prompt { "${esc}[38;2;${rgb.r};${rgb.g};${rgb.b}m${label}${esc}[0m" }`;
+    }
+
+    if (effective === 'cmd') {
+        // cmd: $G is '>'; no reliable colour support, so text only.
+        return `prompt kubectl@${safe} $G `;
+    }
+
+    if (effective === 'zsh') {
+        if (!rgb) { return `export PS1='${label}'`; }
+        // zsh: %{ %} wrap non-printing sequences; \e is emitted via the literal ESC below.
+        return `export PS1=$'%{\\e[38;2;${rgb.r};${rgb.g};${rgb.b}m%}${label}%{\\e[0m%}'`;
+    }
+
+    // bash and 'default' (assume a POSIX login shell, typically bash over SSH).
+    if (!rgb) { return `export PS1='${label}'`; }
+    // bash PS1 interprets \e (ESC) and \[ \] (non-printing) at render time.
+    return `export PS1='\\[\\e[38;2;${rgb.r};${rgb.g};${rgb.b}m\\]${label}\\[\\e[0m\\]'`;
+}
+
 export class TerminalManager implements vscode.Disposable {
     private readonly openTerminals = new Map<string, vscode.Terminal>();
     private readonly terminalOpenedAt = new Map<string, number>();
@@ -41,10 +124,11 @@ export class TerminalManager implements vscode.Disposable {
     private _activeClusterId?: string;
     private readonly _onActiveChange = new vscode.EventEmitter<string | undefined>();
     readonly onActiveChange: vscode.Event<string | undefined> = this._onActiveChange.event;
+    private readonly _disposables: vscode.Disposable[] = [];
 
     constructor(private readonly store: ClusterStore) {
 
-        vscode.window.onDidCloseTerminal(terminal => {
+        this._disposables.push(vscode.window.onDidCloseTerminal(terminal => {
             for (const [id, t] of this.openTerminals) {
                 if (t === terminal) {
                     const openedAt = this.terminalOpenedAt.get(id);
@@ -65,22 +149,24 @@ export class TerminalManager implements vscode.Disposable {
                     break;
                 }
             }
-        });
+        }));
     }
 
     private async showConptyError(): Promise<void> {
         log.warn('Terminal closed immediately after launch — possible ConPTY error on Windows');
+        const btnEinstellungAktivieren = vscode.l10n.t('Einstellung aktivieren');
+        const btnHilfeAnzeigen = vscode.l10n.t('Hilfe anzeigen');
         const choice = await vscode.window.showErrorMessage(
-            'Das Terminal konnte nicht gestartet werden. Auf Windows kann dies an einem ConPTY-Problem liegen.',
-            'Einstellung aktivieren',
-            'Hilfe anzeigen',
+            vscode.l10n.t('Das Terminal konnte nicht gestartet werden. Auf Windows kann dies an einem ConPTY-Problem liegen.'),
+            btnEinstellungAktivieren,
+            btnHilfeAnzeigen,
         );
-        if (choice === 'Einstellung aktivieren') {
+        if (choice === btnEinstellungAktivieren) {
             await vscode.commands.executeCommand(
                 'workbench.action.openSettings',
                 'terminal.integrated.windowsUseConptyDll',
             );
-        } else if (choice === 'Hilfe anzeigen') {
+        } else if (choice === btnHilfeAnzeigen) {
             void vscode.env.openExternal(
                 vscode.Uri.parse('https://code.visualstudio.com/updates/v1_109#_removal-of-winpty-support'),
             );
@@ -112,6 +198,16 @@ export class TerminalManager implements vscode.Disposable {
         }
     }
 
+    /** Close any open terminal(s) for the given cluster id. The existing
+     *  onDidCloseTerminal handler performs map cleanup and temp-file deletion. */
+    public closeForCluster(clusterId: string): void {
+        const terminal = this.openTerminals.get(clusterId);
+        if (terminal) {
+            log.info(`Closing terminal for cluster id=${clusterId} (connection deleted)`);
+            terminal.dispose();
+        }
+    }
+
     getActiveClusterId(): string | undefined {
         return this._activeClusterId;
     }
@@ -132,12 +228,13 @@ export class TerminalManager implements vscode.Disposable {
             if (!openAnyway) { return; }
         }
         if (profile.isProd) {
+            const btnOeffnen = vscode.l10n.t('Öffnen');
             const confirm = await vscode.window.showWarningMessage(
-                `⚠️ "${profile.name}" ist eine Produktionsumgebung. Terminal wirklich öffnen?`,
+                vscode.l10n.t('⚠️ "{0}" ist eine Produktionsumgebung. Terminal wirklich öffnen?', profile.name),
                 { modal: true },
-                'Öffnen',
+                btnOeffnen,
             );
-            if (confirm !== 'Öffnen') { return; }
+            if (confirm !== btnOeffnen) { return; }
         }
         await this.openNew(profile);
         this._activeClusterId = profile.id;
@@ -173,15 +270,17 @@ export class TerminalManager implements vscode.Disposable {
 
     private async showKubectlMissingWarning(): Promise<{ openAnyway: boolean }> {
         log.warn('kubectl not found in PATH — showing install prompt');
+        const btnInstallieren = vscode.l10n.t('kubectl installieren');
+        const btnTrotzdemOeffnen = vscode.l10n.t('Trotzdem öffnen');
         const choice = await vscode.window.showWarningMessage(
-            'kubectl wurde nicht in PATH gefunden. Bitte installieren, um Terminals zu nutzen.',
-            'kubectl installieren',
-            'Trotzdem öffnen',
+            vscode.l10n.t('kubectl wurde nicht in PATH gefunden. Bitte installieren, um Terminals zu nutzen.'),
+            btnInstallieren,
+            btnTrotzdemOeffnen,
         );
-        if (choice === 'kubectl installieren') {
+        if (choice === btnInstallieren) {
             void vscode.env.openExternal(vscode.Uri.parse('https://kubernetes.io/docs/tasks/tools/'));
         }
-        return { openAnyway: choice === 'Trotzdem öffnen' };
+        return { openAnyway: choice === btnTrotzdemOeffnen };
     }
 
     private tempFilePath(clusterId: string): string {
@@ -191,7 +290,7 @@ export class TerminalManager implements vscode.Disposable {
     private async openNew(profile: ClusterProfile): Promise<void> {
         try {
             const tempDir = path.join(os.tmpdir(), 'kubectl-control-ext');
-            await fs.mkdir(tempDir, { recursive: true });
+            await fs.mkdir(tempDir, { recursive: true, mode: 0o700 });
 
             const kubeconfigPath = this.tempFilePath(profile.id);
             await fs.writeFile(kubeconfigPath, profile.kubeconfigData, { encoding: 'utf-8', mode: 0o600 });
@@ -207,9 +306,9 @@ export class TerminalManager implements vscode.Disposable {
                 },
             });
 
-            if (profile.isProd === true) {
-                terminal.sendText(`echo "⚠️  ACHTUNG: Dies ist eine PRODUKTIONSUMGEBUNG (${profile.name}). Änderungen wirken sich direkt aus."`);
-            }
+            // Track whether we sent any setup commands, so we can clear their
+            // echoes from the screen afterwards for a clean starting terminal.
+            let sentSetup = false;
 
             // If a specific context is selected, set it automatically.
             // Validate the name first — it originates from imported kubeconfig data
@@ -217,12 +316,38 @@ export class TerminalManager implements vscode.Disposable {
             if (profile.activeContext) {
                 if (isSafeContextName(profile.activeContext)) {
                     terminal.sendText(`kubectl config use-context ${profile.activeContext}`);
+                    sentSetup = true;
                 } else {
                     log.warn(`Skipping auto use-context: unsafe context name "${profile.activeContext}"`);
                     vscode.window.showWarningMessage(
-                        `Context "${profile.activeContext}" enthält ungültige Zeichen und wurde nicht automatisch gesetzt.`,
+                        vscode.l10n.t('Context "{0}" enthält ungültige Zeichen und wurde nicht automatisch gesetzt.', profile.activeContext),
                     );
                 }
+            }
+
+            // Set a per-connection prompt (kubectl@<name> >) unless disabled.
+            const promptEnabled = vscode.workspace
+                .getConfiguration('kubectl-control')
+                .get<boolean>('customTerminalPrompt', true);
+            if (promptEnabled) {
+                const promptCmd = buildPromptCommand(profile.name, profile.shell, profile.promptColor);
+                if (promptCmd) {
+                    terminal.sendText(promptCmd);
+                    sentSetup = true;
+                }
+            }
+
+            // Wipe the setup-command echoes so the terminal starts clean.
+            if (sentSetup) {
+                terminal.sendText(buildClearCommand(profile.shell));
+            }
+
+            // Prod warning is sent last so it stays visible on the cleared screen.
+            // The name is sanitized (no quotes/$/backtick/backslash) so it cannot
+            // break out of the echo argument in any shell.
+            if (profile.isProd === true) {
+                const safeName = sanitizePromptName(profile.name);
+                terminal.sendText(`echo "${vscode.l10n.t('⚠️  ACHTUNG: Dies ist eine PRODUKTIONSUMGEBUNG ({0}). Änderungen wirken sich direkt aus.', safeName)}"`);
             }
 
             this.openTerminals.set(profile.id, terminal);
@@ -232,7 +357,7 @@ export class TerminalManager implements vscode.Disposable {
             log.info(`Terminal opened for "${profile.name}" (shell=${profile.shell ?? 'default'})`);
         } catch (e) {
             log.error(`Failed to open terminal for "${profile.name}"`, e);
-            vscode.window.showErrorMessage(`Terminal konnte nicht geöffnet werden: ${e}`);
+            vscode.window.showErrorMessage(vscode.l10n.t('Terminal konnte nicht geöffnet werden: {0}', String(e)));
         }
     }
 
@@ -260,5 +385,6 @@ export class TerminalManager implements vscode.Disposable {
         }
         this._onDidChange.dispose();
         this._onActiveChange.dispose();
+        for (const d of this._disposables) { d.dispose(); }
     }
 }

@@ -48,6 +48,8 @@ export class ClusterTreeItem extends vscode.TreeItem {
             desc += ' 🟢';
         } else if (status === 'unreachable') {
             desc += ' 🔴';
+        } else if (status === 'unauthorized') {
+            desc += ' 🟡';
         }
         this.description = desc;
 
@@ -58,6 +60,8 @@ export class ClusterTreeItem extends vscode.TreeItem {
             `- Shell: \`${profile.shell ?? 'default'}\`\n` +
             (profile.group ? `- Gruppe: \`${profile.group}\`\n` : '') +
             (profile.isProd ? '\n⚠️ Produktionsumgebung — Änderungen wirken sich direkt aus\n' : '') +
+            (status === 'unreachable' ? '\n⚠️ Cluster nicht erreichbar\n' : '') +
+            (status === 'unauthorized' ? '\n⚠️ Token abgelaufen oder ungültig — nicht authentifiziert. Kubeconfig neu importieren.\n' : '') +
             (hasTerminal ? '\n_Terminal ist geöffnet_' : '');
         this.tooltip = new vscode.MarkdownString(tooltipLines);
 

@@ -9,12 +9,18 @@ import { GistSyncService } from './gistSync';
 import { ClusterStatusService } from './clusterStatus';
 import { isSetupDone, markSetupDone } from './setup';
 import { log } from './logger';
+import { registerResourceViewer } from './features/resourceViewer';
+import { registerPortForward } from './features/portForward';
+import { registerHelmBrowser } from './features/helmBrowser';
+import { registerRbacViewer } from './features/rbacViewer';
 
 export function activate(context: vscode.ExtensionContext) {
-    log.info('kubectl-control activating…');
+    const extensionVersion = String(context.extension.packageJSON.version ?? 'unknown');
+    log.info(`kubectl-control activating… v${extensionVersion}`);
 
     const store = new ClusterStore(context);
     const lockService = new LockService(context.secrets);
+    void lockService.init(); // restore persisted brute-force counters
     const autoLockMinutes = vscode.workspace.getConfiguration('kubectl-control').get<number>('autoLockMinutes', 0);
     lockService.setAutoLock(autoLockMinutes);
     context.subscriptions.push(
@@ -30,7 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
     const clusterStatusService = new ClusterStatusService(store, terminalManager);
     const treeProvider = new ClusterTreeDataProvider(store, terminalManager, lockService, clusterStatusService);
     const connectionsViewProvider = new ConnectionsViewProvider(
-        context.extensionUri, store, lockService, () => treeProvider.refresh()
+        context.extensionUri, store, lockService, () => treeProvider.refresh(), extensionVersion
     );
 
     const welcomeMode = !isSetupDone(context);
@@ -44,7 +50,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     const activeClusterStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
     activeClusterStatus.command = 'kubectl-control.quickSwitch';
-    activeClusterStatus.tooltip = 'Aktiver Cluster – klicken zum Wechseln';
+    activeClusterStatus.tooltip = vscode.l10n.t('Aktiver Cluster – klicken zum Wechseln');
     context.subscriptions.push(activeClusterStatus);
 
     context.subscriptions.push(
@@ -57,7 +63,11 @@ export function activate(context: vscode.ExtensionContext) {
             const cluster = clusters.find(c => c.id === clusterId);
             if (cluster) {
                 const prodBadge = cluster.isProd ? ' 🔴' : '';
-                activeClusterStatus.text = `$(terminal) ${cluster.name}${prodBadge}`;
+                const namespaceSuffix = cluster.namespace ? ` · ${cluster.namespace}` : '';
+                activeClusterStatus.text = `$(terminal) ${cluster.name}${namespaceSuffix}${prodBadge}`;
+                activeClusterStatus.tooltip = cluster.namespace
+                    ? vscode.l10n.t('Aktiver Cluster: {0} · {1} – klicken zum Wechseln', cluster.name, cluster.namespace)
+                    : vscode.l10n.t('Aktiver Cluster – klicken zum Wechseln');
                 activeClusterStatus.show();
             }
         }),
@@ -68,8 +78,13 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     registerCommands(context, store, treeProvider, connectionsViewProvider, lockService, terminalManager, gistSync);
+    context.subscriptions.push(
+        ...registerResourceViewer(context, store),
+        ...registerPortForward(context, store),
+        ...registerHelmBrowser(context, store),
+        ...registerRbacViewer(context, store),
+    );
     log.info('kubectl-control activated');
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-function
 export function deactivate() {}
