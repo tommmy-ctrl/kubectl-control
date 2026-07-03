@@ -102,9 +102,19 @@ git push origin v1.1.0      # triggert release.yml
 
 ## 4. Versionsregeln
 
-- **SemVer.** Beta: `X.Y.Z-beta.N`. Prod: `X.Y.Z`.
-- `beta-release.yml` bricht ab, wenn die Version auf `beta` **kein** `-beta` enthält.
-- `release.yml` ignoriert Tags mit `-` (Pre-Release) und published nie eine Beta in den Marketplace.
+Der VS Code Marketplace kennt **keine** SemVer-Pre-Release-Suffixe (`-beta.N`). Pre-Release
+ist ein *Flag* (`--pre-release`), keine Namenssache. Daher gilt die MINOR-Paritäts-Konvention:
+
+- **Marketplace-Version (`package.json`):**
+  - **Stable** = **gerader** MINOR: `1.2.x`, `1.4.x` …
+  - **Beta/Pre-Release** = **ungerader** MINOR: `1.3.x`, `1.5.x` …
+  - `beta-release.yml` bricht ab, wenn die Version auf `beta` einen **geraden** MINOR hat.
+- **GitHub-Tags** (zur klaren Trennung):
+  - **Stable:** `vX.Y.Z` (z. B. `v1.2.0`) — pusht `release.yml` → Marketplace-Publish.
+  - **Beta:** `beta-vX.Y.Z` (z. B. `beta-v1.3.0`) — erzeugt von `beta-release.yml`. Passt
+    **nicht** auf das `v*`-Muster von `release.yml`, kann also nie einen Stable-Publish auslösen.
+- **CHANGELOG.md** pflegen: Der Marketplace zeigt ihn im „Changelog"-Tab an. Pro Stable-Release
+  einen Abschnitt `## [X.Y.Z] – JJJJ-MM-TT`.
 
 ---
 
