@@ -4,6 +4,7 @@ import { ClusterStore, ShellType } from './store';
 import { LockService } from './lockService';
 import { importFile, promptSetPassword, handleImportFromKubeconfig } from './setup';
 import { parseKubeconfig, getActiveNamespace } from './kubeconfigParser';
+import { execWithKubeconfig } from './kubectlExec';
 import { log } from './logger';
 import { welcomeHtml, lockHtml, formHtml } from './webviews/templates';
 
@@ -114,6 +115,16 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         void this.view?.webview.postMessage({ command: 'setupGoto', step: 'tutorial' });
     }
 
+    /** Quick best-effort connectivity check. Returns null on success, or an error message. */
+    private async testConnection(kubeconfigData: string, context: string | undefined): Promise<string | null> {
+        try {
+            await execWithKubeconfig(kubeconfigData, context, ['cluster-info', '--request-timeout=3s'], 5000);
+            return null;
+        } catch (e) {
+            return e instanceof Error ? e.message : String(e);
+        }
+    }
+
     private async addCluster(msg: Record<string, string>): Promise<void> {
         const name = (msg.name ?? '').trim();
         const kubeconfigData = (msg.kubeconfigData ?? '').trim();
@@ -123,13 +134,24 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         }
         const parsed = parseKubeconfig(kubeconfigData);
         const namespace = getActiveNamespace(parsed);
+        const ctx = msg.activeContext || parsed.currentContext || undefined;
+        const err = await this.testConnection(kubeconfigData, ctx);
+        if (err !== null) {
+            const btnSave = vscode.l10n.t('Trotzdem speichern');
+            const choice = await vscode.window.showWarningMessage(
+                vscode.l10n.t('Verbindung zu „{0}" konnte nicht verifiziert werden. Trotzdem speichern?', name),
+                { modal: true, detail: err.slice(0, 500) },
+                btnSave,
+            );
+            if (choice !== btnSave) { return; }
+        }
         await this.store.addCluster({
             name,
             kubeconfigData,
             group: (msg.group ?? '').trim() || undefined,
             shell: (msg.shell as ShellType) || undefined,
             namespace,
-            activeContext: msg.activeContext || parsed.currentContext || undefined,
+            activeContext: ctx,
             promptColor: (msg.promptColor ?? '').trim() || undefined,
         });
         log.info(`Cluster added via form: "${name}"`);
@@ -147,13 +169,24 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         }
         const parsed = parseKubeconfig(kubeconfigData);
         const namespace = getActiveNamespace(parsed);
+        const ctx = msg.activeContext || parsed.currentContext || undefined;
+        const err = await this.testConnection(kubeconfigData, ctx);
+        if (err !== null) {
+            const btnSave = vscode.l10n.t('Trotzdem speichern');
+            const choice = await vscode.window.showWarningMessage(
+                vscode.l10n.t('Verbindung zu „{0}" konnte nicht verifiziert werden. Trotzdem speichern?', name),
+                { modal: true, detail: err.slice(0, 500) },
+                btnSave,
+            );
+            if (choice !== btnSave) { return; }
+        }
         await this.store.updateCluster(msg.id, {
             name,
             kubeconfigData,
             group: (msg.group ?? '').trim() || undefined,
             shell: (msg.shell as ShellType) || undefined,
             namespace,
-            activeContext: msg.activeContext || parsed.currentContext || undefined,
+            activeContext: ctx,
             promptColor: (msg.promptColor ?? '').trim() || undefined,
         });
         log.info(`Cluster updated via form: "${name}"`);

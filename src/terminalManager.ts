@@ -198,6 +198,16 @@ export class TerminalManager implements vscode.Disposable {
         }
     }
 
+    /** Close any open terminal(s) for the given cluster id. The existing
+     *  onDidCloseTerminal handler performs map cleanup and temp-file deletion. */
+    public closeForCluster(clusterId: string): void {
+        const terminal = this.openTerminals.get(clusterId);
+        if (terminal) {
+            log.info(`Closing terminal for cluster id=${clusterId} (connection deleted)`);
+            terminal.dispose();
+        }
+    }
+
     getActiveClusterId(): string | undefined {
         return this._activeClusterId;
     }

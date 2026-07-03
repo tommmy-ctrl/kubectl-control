@@ -37,6 +37,8 @@ export function registerCommands(
             btnDelete
         );
         if (confirm === btnDelete) {
+            // Close any open terminal session(s) for this connection before removing it.
+            terminalManager.closeForCluster(item.profile.id);
             await store.deleteCluster(item.profile.id);
             treeProvider.refresh();
         }
@@ -210,7 +212,8 @@ export function registerCommands(
         items.push(
             { kind: vscode.QuickPickItemKind.Separator, label: vscode.l10n.t('Cluster'), action: '' },
             { label: vscode.l10n.t('$(symbol-namespace) Namespace wechseln'), description: vscode.l10n.t('Namespace für einen Cluster ändern'), action: 'switch-namespace' },
-            { kind: vscode.QuickPickItemKind.Separator, label: '', action: '' },
+            { kind: vscode.QuickPickItemKind.Separator, label: vscode.l10n.t('Einstellungen'), action: '' },
+            { label: vscode.l10n.t('$(settings-gear) Einstellungen öffnen'), description: vscode.l10n.t('Auto-Lock, Status-Intervall, Terminal-Prompt …'), action: 'vscode-settings' },
             { label: vscode.l10n.t('$(output) Debug-Logs anzeigen'), description: vscode.l10n.t('Output-Panel mit Logs öffnen'), action: 'logs' },
             { label: vscode.l10n.t('$(trash) Anwendung zurücksetzen'), description: vscode.l10n.t('Alle Verbindungen und Einstellungen löschen'), action: 'reset' }
         );
@@ -234,6 +237,7 @@ export function registerCommands(
             case 'lock-disable': await handleDisableLock(lockService); break;
             case 'lock-now':     lockService.lock(); break;
             case 'switch-namespace': await vscode.commands.executeCommand('kubectl-control.switchNamespace'); break;
+            case 'vscode-settings': await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:tommmy-ctrl.kubectl-control'); break;
             case 'logs':         log.show(); break;
             case 'reset':        await handleReset(context, store, lockService, treeProvider, connectionsView); break;
         }
