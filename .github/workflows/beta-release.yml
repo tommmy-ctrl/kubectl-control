@@ -1,11 +1,10 @@
 name: Beta Release (Marketplace Pre-Release)
 
-# Publishes a pre-release to the VS Code Marketplace on every push to `beta`.
-# VS Code Marketplace does NOT support SemVer pre-release identifiers (-beta.N).
-# Use odd MINOR versions for pre-release (1.1.x) and even MINOR for stable (1.2.x).
-# The --pre-release flag is what marks the build as pre-release in the Marketplace.
-# Users with the stable extension do NOT get this automatically — they must
-# explicitly click "Switch to Pre-Release Version" in the Extensions panel.
+# Builds a pre-release .vsix on every push to `beta` and publishes it ONLY as a
+# GitHub Pre-Release (for sideload/testing). Betas do NOT go to the VS Code
+# Marketplace — testers install the .vsix manually and get NO auto-update.
+# Versioning is plain SemVer: package.json on `beta` carries the TARGET stable
+# version (e.g. 1.3.0). Betas are distinguished solely by the `beta-vX.Y.Z` tag.
 
 on:
   push:
@@ -59,15 +58,6 @@ jobs:
         id: ver
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: Validate pre-release version (odd MINOR required)
-        run: |
-          MINOR=$(node -p "require('./package.json').version.split('.')[1]")
-          if [ $((MINOR % 2)) -eq 0 ]; then
-            echo "::error::Pre-release versions must have an odd MINOR (e.g. 1.1.x). Got MINOR=$MINOR. Use even MINOR (e.g. 1.2.x) only for stable releases."
-            exit 1
-          fi
-          echo "OK: version ${{ steps.ver.outputs.version }} has odd MINOR=$MINOR"
-
       - name: Build extension (production webpack)
         run: npm run package
 
@@ -82,21 +72,17 @@ jobs:
       - name: Package pre-release .vsix
         run: vsce package --pre-release --out kubectl-control-${{ steps.ver.outputs.version }}.vsix
 
-      - name: Publish pre-release to VS Code Marketplace
-        run: vsce publish --pre-release --packagePath kubectl-control-${{ steps.ver.outputs.version }}.vsix
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-
-      - name: Create / update GitHub Pre-Release (for traceability)
+      - name: Create / update GitHub Pre-Release (sideload .vsix)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.ver.outputs.version }}
+          tag_name: beta-v${{ steps.ver.outputs.version }}
           name: Beta v${{ steps.ver.outputs.version }}
           prerelease: true
           generate_release_notes: true
           files: kubectl-control-${{ steps.ver.outputs.version }}.vsix
           body: |
-            Dieser Build ist auch im **VS Code Marketplace** als Pre-Release verfügbar.
-            In VS Code: Extension-Seite öffnen → **„Switch to Pre-Release Version"**
+            Beta-Build zum **manuellen Sideload** (`.vsix` unten herunterladen →
+            VS Code ▸ Extensions ▸ „Install from VSIX…").
 
-            Nutzer der Stable-Version werden **nicht automatisch** aktualisiert.
+            Dieser Build ist **nicht** im VS Code Marketplace. Nutzer der Stable-Version
+            werden dadurch **nicht** aktualisiert.

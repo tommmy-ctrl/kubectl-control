@@ -10,8 +10,9 @@ jobs:
     name: Build, Package & Publish
     runs-on: ubuntu-latest
 
-    # Only run for stable tags (even MINOR, e.g. v1.2.0).
-    # Pre-release builds use odd MINOR (1.1.x) and are handled by beta-release.yml.
+    # Only run for stable release tags of the form vX.Y.Z (plain SemVer, no suffix).
+    # Beta tags are prefixed `beta-v…` and never match the `v*` trigger, so they
+    # cannot reach this workflow; the `-` guard is an extra safety net.
     if: ${{ !contains(github.ref_name, '-') }}
 
     permissions:

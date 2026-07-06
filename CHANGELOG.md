@@ -2,8 +2,17 @@
 
 Alle nennenswerten Änderungen an dieser Extension werden hier dokumentiert.
 Das Format orientiert sich an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/),
-die Versionierung folgt [SemVer](https://semver.org/lang/de/) mit der Marketplace-Konvention:
-**gerader MINOR = Stable** (`1.2.x`), **ungerader MINOR = Pre-Release/Beta** (`1.3.x`).
+die Versionierung folgt [SemVer](https://semver.org/lang/de/): jedes Stable-Release
+erhöht `MAJOR.MINOR.PATCH` regulär. Betas sind kein eigener Versionsraum, sondern nur
+GitHub-Pre-Release-`.vsix` unter dem Tag `beta-vX.Y.Z` (siehe [docs/RELEASE.md](docs/RELEASE.md)).
+
+## [1.2.1] – 2026-07-06
+
+### Geändert
+- **Release-Prozess vereinheitlicht.** Die verwirrende gerade/ungerade-MINOR-Konvention und
+  der Marketplace-Pre-Release-Kanal wurden entfernt. Ab jetzt striktes SemVer; Betas laufen
+  nur noch als GitHub-`.vsix` zum Sideload, getrennt allein über das Tag-Präfix `beta-v…`.
+  Siehe [docs/RELEASE.md](docs/RELEASE.md). (Keine funktionalen Änderungen an der Extension.)
 
 ## [1.2.0] – 2026-07-03
 
@@ -39,4 +48,5 @@ Erstes Stable-Release der überarbeiteten Version. Fasst die Beta-Reihe `1.1.x` 
   sanitisiert (kein Ausbrechen aus Shell-Argumenten, auch bei Prod-Warnung).
 - Prompt-Farbe wird konsistent gegen `#rrggbb` validiert (Anlegen, Bearbeiten, Import).
 
+[1.2.1]: https://github.com/tommmy-ctrl/kubectl-control/releases/tag/v1.2.1
 [1.2.0]: https://github.com/tommmy-ctrl/kubectl-control/releases/tag/v1.2.0
