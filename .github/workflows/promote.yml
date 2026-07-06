@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       release_version:
-        description: 'Final SemVer for production (e.g. 1.1.0 — without -beta)'
+        description: 'Final SemVer for production (e.g. 1.3.0)'
         required: true
         type: string
 

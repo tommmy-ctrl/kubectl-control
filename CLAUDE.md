@@ -108,6 +108,8 @@ Vollständiges Playbook: [docs/RELEASE.md](docs/RELEASE.md).
 - Feature-Arbeit auf `feature/*` → PR nach `beta`.
 - **Beta → Prod** über den `promote`-Workflow (oder manuell: `beta` nach `main` mergen + Tag
   `vX.Y.Z` setzen). Der finale Tag triggert Marketplace-Publish.
-- Versionsschema: Beta = `X.Y.Z-beta.N`, Prod = `X.Y.Z` (SemVer).
+- Versionsschema: **striktes SemVer** ohne Sonderregeln. `package.json` trägt die Ziel-Stable-
+  Version `X.Y.Z`; Beta vs. Stable wird **nur** über das Tag-Präfix getrennt: Beta = `beta-vX.Y.Z`
+  (GitHub-only), Stable = `vX.Y.Z` (Marketplace). Keine gerade/ungerade-MINOR-Regel.
 
 Siehe Code-Standards: [CONTRIBUTING.md](CONTRIBUTING.md).
