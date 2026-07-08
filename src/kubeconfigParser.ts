@@ -1,4 +1,5 @@
 import * as jsYaml from 'js-yaml';
+import { t } from './i18n';
 
 export interface KubeconfigContext {
     name: string;
@@ -19,7 +20,7 @@ export interface ParseResult {
  */
 export function parseKubeconfig(yaml: string): ParseResult {
     if (!yaml.trim()) {
-        return { valid: false, error: 'Leerer Inhalt', contexts: [], currentContext: '' };
+        return { valid: false, error: t('Empty content'), contexts: [], currentContext: '' };
     }
 
     let doc: unknown;
@@ -27,20 +28,20 @@ export function parseKubeconfig(yaml: string): ParseResult {
         doc = jsYaml.load(yaml);
     } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        return { valid: false, error: `Ungültiges YAML: ${msg}`, contexts: [], currentContext: '' };
+        return { valid: false, error: t('Invalid YAML: {0}', msg), contexts: [], currentContext: '' };
     }
 
     if (typeof doc !== 'object' || doc === null) {
-        return { valid: false, error: 'Ungültiges YAML: kein Objekt', contexts: [], currentContext: '' };
+        return { valid: false, error: t('Invalid YAML: not an object'), contexts: [], currentContext: '' };
     }
 
     const root = doc as Record<string, unknown>;
 
     if (!('apiVersion' in root)) {
-        return { valid: false, error: '"apiVersion" fehlt — kein gültiges kubeconfig', contexts: [], currentContext: '' };
+        return { valid: false, error: t('"apiVersion" missing — not a valid kubeconfig'), contexts: [], currentContext: '' };
     }
     if (root['kind'] !== 'Config') {
-        return { valid: false, error: '"kind: Config" fehlt — kein gültiges kubeconfig', contexts: [], currentContext: '' };
+        return { valid: false, error: t('"kind: Config" missing — not a valid kubeconfig'), contexts: [], currentContext: '' };
     }
 
     const currentContext = typeof root['current-context'] === 'string' ? root['current-context'] : '';

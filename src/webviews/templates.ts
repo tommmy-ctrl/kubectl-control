@@ -2,9 +2,24 @@
  * HTML template functions for the ConnectionsView webview panels.
  *
  * Each function returns a complete HTML document string.  The caller
- * (connectionsView.ts) supplies the nonce and webview CSP source so that
- * this module has zero dependency on the VS Code API.
+ * (connectionsView.ts) supplies the nonce, webview CSP source, and resolved
+ * UI language so that this module has zero dependency on the VS Code API.
  */
+
+import type { Lang } from '../i18n';
+import { de } from '../i18n/translations.de';
+
+// ── Translation helper (mirrors t() in ../i18n.ts, without the vscode dependency) ──
+
+function wt(lang: Lang, key: string, ...args: (string | number)[]): string {
+    const template = lang === 'de' ? (de[key] ?? key) : key;
+    return args.length === 0
+        ? template
+        : template.replace(/\{(\d+)\}/g, (match, idx: string) => {
+            const i = Number(idx);
+            return i < args.length ? String(args[i]) : match;
+        });
+}
 
 // ── Shared CSS ───────────────────────────────────────────────────────────────
 
@@ -71,9 +86,9 @@ export function baseStyles(): string {
 
 // ── Welcome screen ────────────────────────────────────────────────────────────
 
-export function welcomeHtml(nonce: string, cspSource: string): string {
+export function welcomeHtml(nonce: string, cspSource: string, lang: Lang): string {
     return `<!DOCTYPE html>
-<html lang="de">
+<html lang="${lang}">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
@@ -196,8 +211,8 @@ export function welcomeHtml(nonce: string, cspSource: string): string {
 <body>
     <div class="hero">
         <div class="hero-icon">☸</div>
-        <div class="hero-title">Willkommen bei<br>Kubectl Control</div>
-        <div class="hero-sub">Verwalte mehrere Kubernetes-Cluster mit isolierten Terminals direkt in VS Code.</div>
+        <div class="hero-title">${wt(lang, 'Welcome to<br>Kubectl Control')}</div>
+        <div class="hero-sub">${wt(lang, 'Manage multiple Kubernetes clusters with isolated terminals directly in VS Code.')}</div>
     </div>
 
     <div class="steps">
@@ -205,47 +220,47 @@ export function welcomeHtml(nonce: string, cspSource: string): string {
         <!-- Step: welcome -->
         <div class="step active" id="step-welcome">
             <div class="btn-col">
-                <button class="btn-primary" id="btnStart">Setup starten</button>
-                <button class="btn-ghost" id="btnSkip">Überspringen</button>
+                <button class="btn-primary" id="btnStart">${wt(lang, 'Start Setup')}</button>
+                <button class="btn-ghost" id="btnSkip">${wt(lang, 'Skip')}</button>
             </div>
         </div>
 
         <!-- Step: kubeconfig -->
         <div class="step" id="step-kubeconfig">
-            <div class="step-counter">Schritt 1 von 3</div>
+            <div class="step-counter">${wt(lang, 'Step 1 of 3')}</div>
             <div class="step-card">
-                <div class="step-title">Lokale Verbindungen erkennen</div>
-                <div class="step-desc">Möchtest du vorhandene Contexts aus ~/.kube/config importieren?</div>
+                <div class="step-title">${wt(lang, 'Detect Local Connections')}</div>
+                <div class="step-desc">${wt(lang, 'Would you like to import existing contexts from ~/.kube/config?')}</div>
                 <div class="btn-col">
-                    <button class="btn-primary" id="btnKubeconfigYes">Jetzt importieren</button>
-                    <button class="btn-ghost" id="btnKubeconfigNo">Überspringen</button>
+                    <button class="btn-primary" id="btnKubeconfigYes">${wt(lang, 'Import Now')}</button>
+                    <button class="btn-ghost" id="btnKubeconfigNo">${wt(lang, 'Skip')}</button>
                 </div>
             </div>
         </div>
 
         <!-- Step: import -->
         <div class="step" id="step-import">
-            <div class="step-counter">Schritt 2 von 3</div>
+            <div class="step-counter">${wt(lang, 'Step 2 of 3')}</div>
             <div class="step-card">
-                <div class="step-title">Verbindungen importieren?</div>
-                <div class="step-desc">Hast du bereits eine Exportdatei mit Cluster-Verbindungen?</div>
+                <div class="step-title">${wt(lang, 'Import Connections?')}</div>
+                <div class="step-desc">${wt(lang, 'Do you already have an export file with cluster connections?')}</div>
                 <div class="hint" id="importHint"></div>
                 <div class="btn-col">
-                    <button class="btn-primary" id="btnImportYes">Datei auswählen</button>
-                    <button class="btn-ghost" id="btnImportNo">Überspringen</button>
+                    <button class="btn-primary" id="btnImportYes">${wt(lang, 'Choose File')}</button>
+                    <button class="btn-ghost" id="btnImportNo">${wt(lang, 'Skip')}</button>
                 </div>
             </div>
         </div>
 
         <!-- Step: password -->
         <div class="step" id="step-password">
-            <div class="step-counter">Schritt 3 von 3</div>
+            <div class="step-counter">${wt(lang, 'Step 3 of 3')}</div>
             <div class="step-card">
-                <div class="step-title">Passwort-Schutz?</div>
-                <div class="step-desc">Schütze die Erweiterung mit einem Passwort beim Öffnen.</div>
+                <div class="step-title">${wt(lang, 'Password Protection?')}</div>
+                <div class="step-desc">${wt(lang, 'Protect the extension with a password on open.')}</div>
                 <div class="btn-col">
-                    <button class="btn-primary" id="btnPwdYes">Aktivieren</button>
-                    <button class="btn-ghost" id="btnPwdNo">Überspringen</button>
+                    <button class="btn-primary" id="btnPwdYes">${wt(lang, 'Enable')}</button>
+                    <button class="btn-ghost" id="btnPwdNo">${wt(lang, 'Skip')}</button>
                 </div>
             </div>
         </div>
@@ -253,39 +268,39 @@ export function welcomeHtml(nonce: string, cspSource: string): string {
         <!-- Step: tutorial -->
         <div class="step" id="step-tutorial">
             <div class="step-card" style="gap:14px;">
-                <div class="step-title" style="font-size:1rem;">Willkommen bei Kubectl Control 🎉</div>
-                <div class="step-desc" style="text-align:left;">Hier ist ein Überblick über alle Funktionen:</div>
+                <div class="step-title" style="font-size:1rem;">${wt(lang, 'Welcome to Kubectl Control 🎉')}</div>
+                <div class="step-desc" style="text-align:left;">${wt(lang, "Here's an overview of all features:")}</div>
                 <ul style="list-style:none;display:flex;flex-direction:column;gap:9px;padding:0;">
                     <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
                         <span style="flex-shrink:0;">🖥️</span>
-                        <span><strong>Terminal öffnen</strong> — Klicke einen Cluster an, um ein isoliertes Terminal mit der richtigen kubeconfig zu starten</span>
+                        <span><strong>${wt(lang, 'Open Terminal')}</strong> — ${wt(lang, 'Click a cluster to start an isolated terminal with the right kubeconfig')}</span>
                     </li>
                     <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
                         <span style="flex-shrink:0;">⚡</span>
-                        <span><strong>Quick Switch</strong> — <code style="font-size:0.78rem;background:var(--vscode-textCodeBlock-background,rgba(255,255,255,0.1));padding:1px 4px;border-radius:3px;">Ctrl+Shift+K</code> öffnet die Cluster-Schnellauswahl</span>
+                        <span><strong>Quick Switch</strong> — <code style="font-size:0.78rem;background:var(--vscode-textCodeBlock-background,rgba(255,255,255,0.1));padding:1px 4px;border-radius:3px;">Ctrl+Shift+K</code> ${wt(lang, 'opens the cluster quick-switch')}</span>
                     </li>
                     <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
                         <span style="flex-shrink:0;">🔒</span>
-                        <span><strong>Passwort-Schutz</strong> — Schütze deine Verbindungen mit einem Passwort (Einstellungen → Passwort-Schutz aktivieren)</span>
+                        <span><strong>${wt(lang, 'Password Protection')}</strong> — ${wt(lang, 'protect your connections with a password (Settings → Enable Password Protection)')}</span>
                     </li>
                     <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
                         <span style="flex-shrink:0;">☁️</span>
-                        <span><strong>GitHub Sync</strong> — Synchronisiere Verbindungen verschlüsselt mit deinem GitHub-Account (Einstellungen → GitHub Sync einrichten)</span>
+                        <span><strong>GitHub Sync</strong> — ${wt(lang, 'sync connections encrypted with your GitHub account (Settings → Set Up GitHub Sync)')}</span>
                     </li>
                     <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
                         <span style="flex-shrink:0;">📤</span>
-                        <span><strong>Export / Import</strong> — Erstelle verschlüsselte Backups deiner Verbindungen</span>
+                        <span><strong>${wt(lang, 'Export / Import')}</strong> — ${wt(lang, 'create encrypted backups of your connections')}</span>
                     </li>
                     <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
                         <span style="flex-shrink:0;">🏷️</span>
-                        <span><strong>Gruppen</strong> — Organisiere Cluster in Gruppen</span>
+                        <span><strong>${wt(lang, 'Groups')}</strong> — ${wt(lang, 'organize clusters into groups')}</span>
                     </li>
                     <li style="display:flex;gap:8px;align-items:flex-start;font-size:0.82rem;line-height:1.45;">
                         <span style="flex-shrink:0;">✏️</span>
-                        <span><strong>Bearbeiten</strong> — Rechtsklick auf einen Cluster zum Bearbeiten oder Löschen</span>
+                        <span><strong>${wt(lang, 'Edit')}</strong> — ${wt(lang, 'right-click a cluster to edit or delete it')}</span>
                     </li>
                 </ul>
-                <button class="btn-primary" id="btnTutorialDone" style="margin-top:4px;">Los geht's!</button>
+                <button class="btn-primary" id="btnTutorialDone" style="margin-top:4px;">${wt(lang, "Let's go!")}</button>
             </div>
         </div>
 
@@ -293,9 +308,9 @@ export function welcomeHtml(nonce: string, cspSource: string): string {
         <div class="step" id="step-done">
             <div class="done-check">✅</div>
             <div class="step-card">
-                <div class="step-title">Setup abgeschlossen</div>
-                <div class="step-desc">Du kannst jetzt Verbindungen hinzufügen und Cluster-Terminals öffnen.</div>
-                <button class="btn-primary" id="btnDone">Los geht's</button>
+                <div class="step-title">${wt(lang, 'Setup Complete')}</div>
+                <div class="step-desc">${wt(lang, 'You can now add connections and open cluster terminals.')}</div>
+                <button class="btn-primary" id="btnDone">${wt(lang, "Let's go")}</button>
             </div>
         </div>
 
@@ -330,7 +345,7 @@ export function welcomeHtml(nonce: string, cspSource: string): string {
             const msg = event.data;
             if (msg.command === 'setupGoto') { showStep(msg.step); }
             if (msg.command === 'setupImportCancelled') {
-                document.getElementById('importHint').textContent = 'Keine Datei ausgewählt. Bitte erneut versuchen oder überspringen.';
+                document.getElementById('importHint').textContent = ${JSON.stringify(wt(lang, 'No file selected. Please try again or skip.'))};
             }
         });
     </script>
@@ -340,9 +355,10 @@ export function welcomeHtml(nonce: string, cspSource: string): string {
 
 // ── Lock screen ───────────────────────────────────────────────────────────────
 
-export function lockHtml(nonce: string, cspSource: string): string {
+export function lockHtml(nonce: string, cspSource: string, lang: Lang): string {
+    const [lockedOutPrefix, lockedOutSuffix] = wt(lang, 'Too many failed attempts. Please wait {0} seconds.').split('{0}');
     return `<!DOCTYPE html>
-<html lang="de">
+<html lang="${lang}">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
@@ -369,14 +385,14 @@ export function lockHtml(nonce: string, cspSource: string): string {
 <body>
     <div class="lock-card">
         <div class="lock-icon">🔒</div>
-        <div class="lock-title">Kubectl Control ist gesperrt</div>
+        <div class="lock-title">${wt(lang, 'Kubectl Control is locked')}</div>
         <form class="lock-form" id="lockForm">
             <div>
-                <span class="field-label">Passwort</span>
-                <input type="password" id="lockPwd" autofocus placeholder="Passwort eingeben…">
+                <span class="field-label">${wt(lang, 'Password')}</span>
+                <input type="password" id="lockPwd" autofocus placeholder="${wt(lang, 'Enter password…')}">
             </div>
-            <button type="submit" class="btn-primary">Entsperren</button>
-            <div class="error-msg" id="lockError">Falsches Passwort. Bitte erneut versuchen.</div>
+            <button type="submit" class="btn-primary">${wt(lang, 'Unlock')}</button>
+            <div class="error-msg" id="lockError">${wt(lang, 'Incorrect password. Please try again.')}</div>
         </form>
     </div>
     <script nonce="${nonce}">
@@ -389,7 +405,7 @@ export function lockHtml(nonce: string, cspSource: string): string {
         window.addEventListener('message', event => {
             if (event.data.command === 'unlockFailed') {
                 const err = document.getElementById('lockError');
-                err.textContent = 'Falsches Passwort. Bitte erneut versuchen.';
+                err.textContent = ${JSON.stringify(wt(lang, 'Incorrect password. Please try again.'))};
                 err.style.display = '';
                 const pwd = document.getElementById('lockPwd');
                 pwd.value = ''; pwd.focus();
@@ -398,7 +414,7 @@ export function lockHtml(nonce: string, cspSource: string): string {
             }
             if (event.data.command === 'unlockLockedOut') {
                 const err = document.getElementById('lockError');
-                err.textContent = 'Zu viele Fehlversuche. Bitte warte ' + event.data.seconds + ' Sekunden.';
+                err.textContent = ${JSON.stringify(lockedOutPrefix)} + event.data.seconds + ${JSON.stringify(lockedOutSuffix)};
                 err.style.display = '';
                 const pwd = document.getElementById('lockPwd');
                 const btn = document.querySelector('button[type="submit"]');
@@ -419,11 +435,14 @@ export function lockHtml(nonce: string, cspSource: string): string {
 
 // ── Cluster add/edit form ─────────────────────────────────────────────────────
 
-export function formHtml(nonce: string, cspSource: string, version = 'unknown'): string {
+export function formHtml(nonce: string, cspSource: string, version: string, lang: Lang): string {
     // version originates from package.json (semver); restrict to a safe charset defensively.
     const safeVersion = String(version).replace(/[^0-9A-Za-z.+-]/g, '').slice(0, 40) || 'unknown';
+    const nsPrefix = wt(lang, 'Namespace: {0}').split('{0}')[0];
+    const [ctxPrefix, ctxRest] = wt(lang, '{0} context{1} detected').split('{0}');
+    const [ctxMid, ctxSuffix] = ctxRest.split('{1}');
     return `<!DOCTYPE html>
-<html lang="de">
+<html lang="${lang}">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
@@ -507,24 +526,24 @@ export function formHtml(nonce: string, cspSource: string, version = 'unknown'):
         <input type="hidden" id="editId">
 
         <div class="form-header">
-            <span id="formTitle">Neue Verbindung</span>
-            <span class="edit-badge" id="editBadge">Bearbeiten</span>
+            <span id="formTitle">${wt(lang, 'New Connection')}</span>
+            <span class="edit-badge" id="editBadge">${wt(lang, 'Edit')}</span>
         </div>
 
         <div class="field-group">
-            <label class="field-label" for="clusterName">Name</label>
+            <label class="field-label" for="clusterName">${wt(lang, 'Name')}</label>
             <input id="clusterName" type="text" placeholder="Production, Staging, Minikube" autocomplete="off">
         </div>
 
         <div class="field-row">
             <div class="field-group">
-                <label class="field-label" for="groupInput">Gruppe <span style="opacity:0.5">(optional)</span></label>
-                <input id="groupInput" type="text" placeholder="z.B. Produktion">
+                <label class="field-label" for="groupInput">${wt(lang, 'Group')} <span style="opacity:0.5">(${wt(lang, 'optional')})</span></label>
+                <input id="groupInput" type="text" placeholder="${wt(lang, 'e.g. Production')}">
             </div>
             <div class="field-group">
-                <label class="field-label" for="shellSelect">Shell</label>
+                <label class="field-label" for="shellSelect">${wt(lang, 'Shell')}</label>
                 <select id="shellSelect">
-                    <option value="default">Standard</option>
+                    <option value="default">${wt(lang, 'Default')}</option>
                     <option value="bash">bash</option>
                     <option value="zsh">zsh</option>
                     <option value="powershell">PowerShell</option>
@@ -534,40 +553,40 @@ export function formHtml(nonce: string, cspSource: string, version = 'unknown'):
         </div>
 
         <div class="field-group">
-            <label class="field-label">Terminal-Prompt-Farbe <span style="opacity:0.5">(optional)</span></label>
+            <label class="field-label">${wt(lang, 'Terminal Prompt Color')} <span style="opacity:0.5">(${wt(lang, 'optional')})</span></label>
             <div class="prompt-color-row">
                 <label class="checkbox-inline">
                     <input type="checkbox" id="promptColorEnabled">
-                    <span>Prompt einfärben</span>
+                    <span>${wt(lang, 'Color the prompt')}</span>
                 </label>
-                <input type="color" id="promptColor" value="#4ec9b0" disabled title="Farbe wählen">
+                <input type="color" id="promptColor" value="#4ec9b0" disabled title="${wt(lang, 'Choose color')}">
             </div>
-            <span class="field-hint">Färbt den <code>kubectl@Name &gt;</code>-Prompt im Terminal.</span>
+            <span class="field-hint">${wt(lang, 'Colors the <code>kubectl@name &gt;</code> prompt in the terminal.')}</span>
         </div>
 
         <div class="field-group">
-            <label class="field-label" for="kubeconfigData">Kubeconfig</label>
+            <label class="field-label" for="kubeconfigData">${wt(lang, 'Kubeconfig')}</label>
             <div class="textarea-wrap">
                 <textarea id="kubeconfigData" placeholder="apiVersion: v1&#10;kind: Config&#10;clusters:&#10;  - …"></textarea>
-                <button type="button" class="btn-load-file" id="btnLoadFile" title="Aus Datei laden">📂 Laden</button>
+                <button type="button" class="btn-load-file" id="btnLoadFile" title="${wt(lang, 'Load from file')}">📂 ${wt(lang, 'Load')}</button>
             </div>
             <div class="validation-msg" id="validationMsg"></div>
-            <span class="field-hint">YAML-Inhalt der kubeconfig-Datei einfügen oder laden</span>
+            <span class="field-hint">${wt(lang, 'Paste or load the YAML content of the kubeconfig file')}</span>
         </div>
 
         <div class="field-group" id="contextGroup">
-            <label class="field-label" for="contextSelect">Context</label>
+            <label class="field-label" for="contextSelect">${wt(lang, 'Context')}</label>
             <select id="contextSelect"></select>
             <span class="field-hint" id="namespaceHint"></span>
         </div>
 
         <div class="btn-row">
-            <button type="submit" class="btn-primary" id="submitBtn">Verbindung speichern</button>
-            <button type="button" class="btn-ghost" id="cancelBtn" style="display:none">Abbrechen</button>
+            <button type="submit" class="btn-primary" id="submitBtn">${wt(lang, 'Save Connection')}</button>
+            <button type="button" class="btn-ghost" id="cancelBtn" style="display:none">${wt(lang, 'Cancel')}</button>
         </div>
     </form>
 
-    <div class="version-footer" title="Installierte Version von kubectl-control">kubectl-control v${safeVersion}</div>
+    <div class="version-footer" title="${wt(lang, 'Installed version of kubectl-control')}">kubectl-control v${safeVersion}</div>
 
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
@@ -623,7 +642,7 @@ export function formHtml(nonce: string, cspSource: string, version = 'unknown'):
 
         function updateNamespaceHint() {
             const selected = contexts.find(c => c.name === contextSelect.value);
-            namespaceHint.textContent = selected ? 'Namespace: ' + (selected.namespace || 'default') : '';
+            namespaceHint.textContent = selected ? ${JSON.stringify(nsPrefix)} + (selected.namespace || ${JSON.stringify(wt(lang, 'default'))}) : '';
         }
 
         // ── Prompt colour toggle ─────────────────────────────────────────────
@@ -669,7 +688,7 @@ export function formHtml(nonce: string, cspSource: string, version = 'unknown'):
                 promptColorEnabled.checked = false;
                 promptColor.disabled = true;
             }
-            submitBtn.textContent = 'Änderungen speichern';
+            submitBtn.textContent = ${JSON.stringify(wt(lang, 'Save Changes'))};
             cancelBtn.style.display = '';
             formTitle.textContent = name;
             editBadge.style.display = '';
@@ -681,9 +700,9 @@ export function formHtml(nonce: string, cspSource: string, version = 'unknown'):
             editId.value = ''; clusterName.value = ''; kubeconfigEl.value = '';
             groupInput.value = ''; shellSelect.value = 'default';
             promptColorEnabled.checked = false; promptColor.disabled = true; promptColor.value = '#4ec9b0';
-            submitBtn.textContent = 'Verbindung speichern';
+            submitBtn.textContent = ${JSON.stringify(wt(lang, 'Save Connection'))};
             cancelBtn.style.display = 'none';
-            formTitle.textContent = 'Neue Verbindung';
+            formTitle.textContent = ${JSON.stringify(wt(lang, 'New Connection'))};
             editBadge.style.display = 'none';
             showValidation('', '');
             contextGroup.style.display = 'none';
@@ -721,11 +740,11 @@ export function formHtml(nonce: string, cspSource: string, version = 'unknown'):
             if (msg.command === 'kubeconfigParsed') {
                 const r = msg.result;
                 if (!r.valid) {
-                    showValidation('error', r.error ?? 'Ungültiges kubeconfig');
+                    showValidation('error', r.error ?? ${JSON.stringify(wt(lang, 'Invalid kubeconfig'))});
                     contextGroup.style.display = 'none';
                 } else {
                     const ctxCount = r.contexts.length;
-                    showValidation('ok', ctxCount + ' Context' + (ctxCount !== 1 ? 's' : '') + ' erkannt');
+                    showValidation('ok', ${JSON.stringify(ctxPrefix)} + ctxCount + ${JSON.stringify(ctxMid)} + (ctxCount !== 1 ? 's' : '') + ${JSON.stringify(ctxSuffix)});
                     updateContextSelect(r.contexts, r.currentContext);
                 }
             }
