@@ -3,6 +3,7 @@ import { ClusterStore, ClusterProfile } from './store';
 import { TerminalManager } from './terminalManager';
 import { LockService } from './lockService';
 import { ClusterStatusService, ClusterStatus } from './clusterStatus';
+import { t } from './i18n';
 
 // ── Tree node union type ──────────────────────────────────────────────────────
 
@@ -56,13 +57,13 @@ export class ClusterTreeItem extends vscode.TreeItem {
         const tooltipLines =
             `**${profile.name}**\n\n` +
             `- Namespace: \`${ns}\`\n` +
-            `- Context: \`${profile.activeContext ?? '(Standard)'}\`\n` +
+            `- Context: \`${profile.activeContext ?? t('(default)')}\`\n` +
             `- Shell: \`${profile.shell ?? 'default'}\`\n` +
-            (profile.group ? `- Gruppe: \`${profile.group}\`\n` : '') +
-            (profile.isProd ? '\n⚠️ Produktionsumgebung — Änderungen wirken sich direkt aus\n' : '') +
-            (status === 'unreachable' ? '\n⚠️ Cluster nicht erreichbar\n' : '') +
-            (status === 'unauthorized' ? '\n⚠️ Token abgelaufen oder ungültig — nicht authentifiziert. Kubeconfig neu importieren.\n' : '') +
-            (hasTerminal ? '\n_Terminal ist geöffnet_' : '');
+            (profile.group ? t('- Group: `{0}`\n', profile.group) : '') +
+            (profile.isProd ? t('\n⚠️ Production environment — changes take effect immediately\n') : '') +
+            (status === 'unreachable' ? t('\n⚠️ Cluster unreachable\n') : '') +
+            (status === 'unauthorized' ? t('\n⚠️ Token expired or invalid — not authenticated. Re-import kubeconfig.\n') : '') +
+            (hasTerminal ? t('\n_Terminal is open_') : '');
         this.tooltip = new vscode.MarkdownString(tooltipLines);
 
         if (profile.isProd === true && !hasTerminal) {
@@ -76,7 +77,7 @@ export class ClusterTreeItem extends vscode.TreeItem {
 
         this.command = {
             command: 'kubectl-control.openTerminal',
-            title: 'Terminal öffnen',
+            title: t('Open Terminal'),
             arguments: [this],
         };
 

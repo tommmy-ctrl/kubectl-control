@@ -30,7 +30,6 @@
     "Other"
   ],
   "activationEvents": [],
-  "l10n": "./l10n",
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -155,6 +154,21 @@
           "type": "boolean",
           "default": true,
           "description": "%config.customTerminalPrompt.description%"
+        },
+        "kubectl-control.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "en",
+            "de"
+          ],
+          "enumDescriptions": [
+            "%config.language.enum.auto%",
+            "%config.language.enum.en%",
+            "%config.language.enum.de%"
+          ],
+          "default": "auto",
+          "description": "%config.language.description%"
         }
       }
     },
@@ -275,7 +289,6 @@
     "webpack-cli": "^7.2.1"
   },
   "dependencies": {
-    "@vscode/l10n": "^0.0.18",
     "js-yaml": "^5.2.1",
     "uuid": "^14.0.1"
   }
