@@ -4,8 +4,8 @@ All notable changes to this extension are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/): each stable release
 increments `MAJOR.MINOR.PATCH` in the usual way. Betas are not a separate version
-namespace — they are simply GitHub pre-release `.vsix` files under the tag `beta-vX.Y.Z`
-(see [docs/RELEASE.md](docs/RELEASE.md)).
+namespace — they are simply GitHub pre-release `.vsix` files under the tag
+`beta-vX.Y.Z-beta.N` (see [docs/RELEASE.md](docs/RELEASE.md)).
 
 ## [1.2.3] – 2026-07-08
 
@@ -28,6 +28,10 @@ namespace — they are simply GitHub pre-release `.vsix` files under the tag `be
   remain bilingual as described above.
 - **`package.nls.json` reverted to English** (the VS Code default-locale convention);
   `package.nls.de.json` continues to provide the German translation.
+- **Beta tags now carry a build number:** `beta-release.yml` tags each push as
+  `beta-vX.Y.Z-beta.N` (`N` auto-incrementing for the target version) instead of reusing
+  and overwriting a single `beta-vX.Y.Z` tag/release. `package.json` itself stays a bare
+  `X.Y.Z` as before (VS Code requires this). See [docs/RELEASE.md](docs/RELEASE.md).
 
 ### Removed
 - **Dead code:** unused `src/terminal.ts` wrapper.

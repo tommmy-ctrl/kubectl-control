@@ -117,8 +117,10 @@ Full playbook: [docs/RELEASE.md](docs/RELEASE.md).
 - **Beta → Prod** via the `promote` workflow (or manually: merge `beta` into `main` +
   set tag `vX.Y.Z`). The final tag triggers the Marketplace publish.
 - Versioning scheme: **strict SemVer** with no special rules. `package.json` carries the
-  target stable version `X.Y.Z`; beta vs. stable is distinguished **only** by the tag
-  prefix: beta = `beta-vX.Y.Z` (GitHub only), stable = `vX.Y.Z` (Marketplace). No
-  even/odd MINOR rule.
+  target stable version `X.Y.Z` (VS Code requires this field to stay a bare `X.Y.Z`, no
+  suffix); beta vs. stable is distinguished **only** by the tag: beta =
+  `beta-vX.Y.Z-beta.N` (GitHub only, `N` auto-incremented per target version by
+  `beta-release.yml` so each beta build gets its own release), stable = `vX.Y.Z`
+  (Marketplace). No even/odd MINOR rule.
 
 See code standards: [CONTRIBUTING.md](CONTRIBUTING.md).
