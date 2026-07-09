@@ -70,6 +70,11 @@ mechanisms — do not mix them up:
   a local `wt(lang, key, ...args)` helper — the resolved language is passed in by the caller
   ([src/connectionsView.ts](src/connectionsView.ts)) since the templates module has zero VS Code
   API dependency by design.
+- The Settings menu (⚙, `kubectl-control.settingsMenu` in [src/commands.ts](src/commands.ts))
+  has a single "Language" entry that cycles `kubectl-control.language` through
+  `auto → en → de → auto` directly (`cycleLanguage()`), so users don't have to leave the menu
+  to change language. Keep all settings entries flat in this one list — do not add a nested
+  QuickPick ("sub-menu") for a single setting.
 
 ### Tests
 - New core logic gets tests under `src/test/suite/*.test.ts` (TDD style: `suite`/`test`, `assert`).

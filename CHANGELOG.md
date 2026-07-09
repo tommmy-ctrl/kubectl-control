@@ -18,6 +18,9 @@ namespace — they are simply GitHub pre-release `.vsix` files under the tag `be
   Command titles and settings descriptions in the Command Palette continue to follow VS
   Code's own display language (a VS Code platform limitation, not affected by the new
   setting).
+- **Language switcher in the Settings menu (⚙).** A single "Language" entry cycles
+  Auto → English → German → Auto, so the language can be changed without leaving the
+  extension's own menu (in addition to the `kubectl-control.language` VS Code setting).
 
 ### Changed
 - **Project documentation translated to English.** `CLAUDE.md`, `CONTRIBUTING.md`,

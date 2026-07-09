@@ -159,6 +159,11 @@ export const de: Record<string, string> = {
     'Active cluster: {0} · {1} – click to switch': 'Aktiver Cluster: {0} · {1} – klicken zum Wechseln',
     'Language changed. Reload the window to apply it everywhere.': 'Sprache geändert. Fenster neu laden, um sie überall anzuwenden.',
     'Reload Window': 'Fenster neu laden',
+    '$(globe) Language: {0}': '$(globe) Sprache: {0}',
+    'Click to switch: Auto → English → German': 'Klicken zum Wechseln: Automatisch → Englisch → Deutsch',
+    'Auto ({0})': 'Automatisch ({0})',
+    'English': 'Englisch',
+    'German': 'Deutsch',
 
     // ── clusterStatus.ts ─────────────────────────────────────────────────────
     'Connection "{0}": token expired or invalid (not authenticated). Please re-import the kubeconfig.':

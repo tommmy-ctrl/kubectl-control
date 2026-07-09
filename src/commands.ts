@@ -9,7 +9,7 @@ import { importFile, promptSetPassword, resetSetup, handleImportFromKubeconfig }
 import { GistSyncService } from './gistSync';
 import { log } from './logger';
 import { fetchNamespaces, FALLBACK_NAMESPACES } from './features/namespaceBrowser';
-import { t } from './i18n';
+import { t, getLanguage } from './i18n';
 
 export function registerCommands(
     context: vscode.ExtensionContext,
@@ -210,10 +210,17 @@ export function registerCommands(
             items.push({ label: t('$(lock) Enable Password Protection'), description: t('Lock extension on open'), action: 'lock-enable' });
         }
 
+        const languageNames: Record<string, string> = { en: t('English'), de: t('German') };
+        const languageSetting = vscode.workspace.getConfiguration('kubectl-control').get<string>('language', 'auto');
+        const languageLabel = languageSetting === 'auto'
+            ? t('Auto ({0})', languageNames[getLanguage()] ?? getLanguage())
+            : (languageNames[languageSetting] ?? languageSetting);
+
         items.push(
             { kind: vscode.QuickPickItemKind.Separator, label: t('Cluster'), action: '' },
             { label: t('$(symbol-namespace) Switch Namespace'), description: t('Change the namespace for a cluster'), action: 'switch-namespace' },
             { kind: vscode.QuickPickItemKind.Separator, label: t('Settings'), action: '' },
+            { label: t('$(globe) Language: {0}', languageLabel), description: t('Click to switch: Auto → English → German'), action: 'cycle-language' },
             { label: t('$(settings-gear) Open Settings'), description: t('Auto-lock, status interval, terminal prompt …'), action: 'vscode-settings' },
             { label: t('$(output) Show Debug Logs'), description: t('Open the Output panel with logs'), action: 'logs' },
             { label: t('$(trash) Reset Application'), description: t('Delete all connections and settings'), action: 'reset' }
@@ -238,6 +245,7 @@ export function registerCommands(
             case 'lock-disable': await handleDisableLock(lockService); break;
             case 'lock-now':     lockService.lock(); break;
             case 'switch-namespace': await vscode.commands.executeCommand('kubectl-control.switchNamespace'); break;
+            case 'cycle-language': await cycleLanguage(); break;
             case 'vscode-settings': await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:tommmy-ctrl.kubectl-control'); break;
             case 'logs':         log.show(); break;
             case 'reset':        await handleReset(context, store, lockService, treeProvider, connectionsView); break;
@@ -252,6 +260,15 @@ export function registerCommands(
         vscode.commands.registerCommand('kubectl-control.syncRestore', () => void gistSync.pull().catch(e => log.error(`syncRestore failed: ${e}`))),
         vscode.commands.registerCommand('kubectl-control.syncDisable', () => void gistSync.disable().catch(e => log.error(`syncDisable failed: ${e}`))),
     );
+}
+
+async function cycleLanguage(): Promise<void> {
+    const order = ['auto', 'en', 'de'] as const;
+    const config = vscode.workspace.getConfiguration('kubectl-control');
+    const current = config.get<string>('language', 'auto');
+    const currentIndex = order.indexOf(current as typeof order[number]);
+    const next = order[(currentIndex + 1) % order.length];
+    await config.update('language', next, vscode.ConfigurationTarget.Global);
 }
 
 async function handleExport(store: ClusterStore): Promise<void> {
