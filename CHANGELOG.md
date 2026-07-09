@@ -7,7 +7,15 @@ increments `MAJOR.MINOR.PATCH` in the usual way. Betas are not a separate versio
 namespace — they are simply GitHub pre-release `.vsix` files under the tag
 `beta-vX.Y.Z-beta.N` (see [docs/RELEASE.md](docs/RELEASE.md)).
 
-## [1.2.3] – 2026-07-08
+## [1.3.3] – 2026-07-08
+
+> **Why the jump from 1.2.2 to 1.3.3?** An earlier mistake published `1.3.0`–`1.3.2` to the
+> Marketplace as pre-releases (since removed as a channel, see the 1.2.1 entry below). The
+> Marketplace won't let the highest-ever-published version be deleted from its version history
+> until a newer version supersedes it, and VS Code's pre-release tracking always follows the
+> numerically highest version regardless of stable/pre-release status — so users who once opted
+> into pre-release updates were stuck offering `1.3.2` forever. Targeting `1.3.3` (instead of
+> `1.2.3`) resolves this for everyone in one release. No functional significance beyond that.
 
 ### Added
 - **Bilingual UI (English / German).** New setting `kubectl-control.language`
