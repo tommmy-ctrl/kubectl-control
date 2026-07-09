@@ -1,4 +1,4 @@
-name: Beta Release (Marketplace Pre-Release)
+name: Beta Release (GitHub Pre-Release, sideload only — not published to the Marketplace)
 
 # Builds a pre-release .vsix on every push to `beta` and publishes it ONLY as a
 # GitHub Pre-Release (for sideload/testing). Betas do NOT go to the VS Code
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   beta:
-    name: Build & Publish Pre-Release to Marketplace
+    name: Build & Publish GitHub Pre-Release (.vsix sideload)
     runs-on: ubuntu-latest
 
     permissions:

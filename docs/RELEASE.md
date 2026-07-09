@@ -57,9 +57,18 @@ feature/*  ──PR──▶  beta  ──(Promote workflow)──▶  main ─�
    (`N` auto-incremented for this target version). **No** Marketplace publish.
 
 ### Testing the Beta (by Users/Testers)
-Download the `.vsix` from the Pre-Release on the GitHub Releases page, then in VS Code:
-**Extensions ▸ "…" ▸ "Install from VSIX…"**. This sideloaded installation receives **no**
-auto-update — to get a new beta build, install the latest `.vsix` again.
+> **Beta builds are never listed in the VS Code Marketplace / Extensions search — this is by
+> design (see the note in the Overview above), not a bug.** Searching for "kubectl-control" in
+> VS Code's Extensions view only ever finds the last **stable** release, never a beta.
+
+1. Open the repo's **GitHub Releases** page and find the pre-release tagged
+   `beta-vX.Y.Z-beta.N` (marked "Pre-release").
+2. Download the `.vsix` file attached to that release.
+3. In VS Code: **Extensions view ▸ "…" menu (top-right) ▸ "Install from VSIX…"** ▸ select the
+   downloaded file.
+
+This sideloaded installation receives **no** auto-update — to get a new beta build, repeat the
+steps above with the latest `.vsix`.
 
 As long as the same target stable version requires multiple beta rounds, `package.json` stays
 the same; each push to `beta` creates a **new** `beta-vX.Y.Z-beta.N` Pre-Release (build `N`
@@ -111,10 +120,12 @@ git push origin v1.3.0      # triggers release.yml
 
 | Secret | Purpose | Workflow |
 |--------|---------|----------|
-| `VSCE_PAT` | Marketplace publish (`vsce publish`) — Pre-Release + Stable | `beta-release.yml`, `release.yml` |
+| `VSCE_PAT` | Marketplace publish (`vsce publish`) — **Stable only** | `release.yml` |
 | `RELEASE_PAT` | Tag push that triggers `release.yml` (optional) | `promote.yml` |
 
-`GITHUB_TOKEN` (automatic) is sufficient for GitHub Releases and asset uploads.
+`GITHUB_TOKEN` (automatic) is sufficient for GitHub Releases and asset uploads. `beta-release.yml`
+only runs `vsce package` (a local build, no Marketplace interaction) and therefore needs neither
+secret — betas never touch the Marketplace, see the note in section 1 above.
 
 > **`RELEASE_PAT`:** Only needed if you want the Promote workflow to run fully automatically
 > through to the Marketplace publish. Without it: `promote.yml` merges and tags, but
