@@ -4,12 +4,12 @@ name: Beta Release (GitHub Pre-Release, sideload only — not published to the M
 # GitHub Pre-Release (for sideload/testing). Betas do NOT go to the VS Code
 # Marketplace — testers install the .vsix manually and get NO auto-update.
 # Versioning is plain SemVer: package.json on `beta` carries the TARGET stable
-# version (e.g. 1.3.0) — VS Code requires this field to stay a bare X.Y.Z, so the
-# suffix cannot live there. Instead, each push gets its own SemVer pre-release
-# identifier `beta.N` (N auto-incrementing per target version) applied ONLY to the
-# git tag / release name / .vsix filename: `beta-vX.Y.Z-beta.N`. This makes every
-# beta build individually identifiable and keeps prior beta releases intact
-# instead of overwriting them.
+# version (e.g. 1.3.0) — VS Code requires this field to stay a bare X.Y.Z, no
+# suffix. Each push updates the SAME `beta-vX.Y.Z` tag/release (single entry per
+# target version, no accumulating beta.N tags). The exact build currently
+# installed is instead identifiable from inside the extension itself: the
+# short commit SHA is baked into the build and shown next to the version in
+# the connection form's footer (see src/webviews/templates.ts).
 
 on:
   push:
@@ -32,8 +32,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # full history + tags, needed to compute the next beta.N
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -65,17 +63,10 @@ jobs:
         id: ver
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
-      - name: Determine next beta build number
-        id: betaver
-        run: |
-          VERSION="${{ steps.ver.outputs.version }}"
-          LAST=$(git tag -l "beta-v${VERSION}-beta.*" | sed -E 's/.*-beta\.([0-9]+)$/\1/' | sort -n | tail -1)
-          NEXT=$(( ${LAST:-0} + 1 ))
-          echo "build=$NEXT" >> "$GITHUB_OUTPUT"
-          echo "tag=beta-v${VERSION}-beta.${NEXT}" >> "$GITHUB_OUTPUT"
-
       - name: Build extension (production webpack)
         run: npm run package
+        env:
+          BUILD_SHA: ${{ github.sha }}
 
       - name: Convert SVG icon to PNG (128x128)
         run: |
@@ -86,19 +77,20 @@ jobs:
         run: npm install -g @vscode/vsce
 
       - name: Package pre-release .vsix
-        run: vsce package --pre-release --out kubectl-control-${{ steps.ver.outputs.version }}-beta.${{ steps.betaver.outputs.build }}.vsix
+        run: vsce package --pre-release --out kubectl-control-${{ steps.ver.outputs.version }}.vsix
 
-      - name: Create GitHub Pre-Release (sideload .vsix)
+      - name: Create / update GitHub Pre-Release (sideload .vsix)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.betaver.outputs.tag }}
-          name: Beta v${{ steps.ver.outputs.version }} (build ${{ steps.betaver.outputs.build }})
+          tag_name: beta-v${{ steps.ver.outputs.version }}
+          name: Beta v${{ steps.ver.outputs.version }}
           prerelease: true
           generate_release_notes: true
-          files: kubectl-control-${{ steps.ver.outputs.version }}-beta.${{ steps.betaver.outputs.build }}.vsix
+          files: kubectl-control-${{ steps.ver.outputs.version }}.vsix
           body: |
             Beta build for **manual sideload** (download the `.vsix` below →
-            VS Code ▸ Extensions ▸ "Install from VSIX…").
+            VS Code ▸ Extensions ▸ "Install from VSIX…"). Once installed, the exact
+            build is shown next to the version number in the connection form's footer.
 
             This build is **not** on the VS Code Marketplace. Users of the stable
             version are **not** updated by this.

@@ -17,7 +17,7 @@ feature/*  ──PR──▶  beta  ──(Promote workflow)──▶  main ─�
 | Branch | Purpose | `package.json` Version | Publication | Auto-Update |
 |--------|---------|------------------------|-------------|-------------|
 | `feature/*` | Development | – | – | – |
-| `beta` | Pre-integration / Testing | Target-Stable `X.Y.Z` | GitHub **Pre-Release** (`.vsix`), Tag `beta-vX.Y.Z-beta.N` | No — manually via "Install from VSIX…" |
+| `beta` | Pre-integration / Testing | Target-Stable `X.Y.Z` | GitHub **Pre-Release** (`.vsix`), Tag `beta-vX.Y.Z` | No — manually via "Install from VSIX…" |
 | `main` | Production | `X.Y.Z` | Marketplace + GitHub Release, Tag `vX.Y.Z` | Yes |
 
 > **Why no Marketplace Pre-Release channel?** The VS Code Marketplace does **not** support
@@ -29,13 +29,13 @@ feature/*  ──PR──▶  beta  ──(Promote workflow)──▶  main ─�
 > version becomes stable.
 >
 > **Identifying a specific beta build:** since `package.json` intentionally does not change
-> between beta rounds of the same target version, individual builds are distinguished by a
-> SemVer pre-release identifier `beta.N` applied only to the **git tag / release name / `.vsix`
-> filename** — never to `package.json`. `beta-release.yml` computes `N` automatically by
-> counting existing `beta-v<version>-beta.*` tags and incrementing. Each push therefore creates
-> its own tag and its own GitHub Pre-Release (`beta-v1.2.3-beta.1`, `beta-v1.2.3-beta.2`, …)
-> instead of overwriting the previous one, so every build stays individually downloadable and
-> traceable to its commit (`git rev-parse beta-v1.2.3-beta.2`).
+> between beta rounds of the same target version, and each push to `beta` updates the **same**
+> `beta-vX.Y.Z` tag/release (no accumulating tags), the exact build cannot be distinguished from
+> the tag alone. Instead, `beta-release.yml` bakes the short commit SHA into the build
+> (`BUILD_SHA` env var → `webpack.DefinePlugin` → `process.env.BUILD_SHA`), and
+> [src/webviews/templates.ts](../src/webviews/templates.ts) shows it next to the version number
+> in the connection form's footer (e.g. `kubectl-control v1.3.3 (a1b2c3d)`). Compare that SHA
+> against `git log` to find the exact commit a running build came from.
 
 ---
 
@@ -53,16 +53,16 @@ feature/*  ──PR──▶  beta  ──(Promote workflow)──▶  main ─�
    > tag prefix `beta-v…`, which the workflow sets automatically.
 
 4. The workflow [`beta-release.yml`](../.github/workflows/beta-release.yml) runs automatically:
-   Gates → Build → **GitHub Pre-Release** with `.vsix` under tag `beta-vX.Y.Z-beta.N`
-   (`N` auto-incremented for this target version). **No** Marketplace publish.
+   Gates → Build → **GitHub Pre-Release** with `.vsix` under tag `beta-vX.Y.Z`. **No**
+   Marketplace publish.
 
 ### Testing the Beta (by Users/Testers)
 > **Beta builds are never listed in the VS Code Marketplace / Extensions search — this is by
 > design (see the note in the Overview above), not a bug.** Searching for "kubectl-control" in
 > VS Code's Extensions view only ever finds the last **stable** release, never a beta.
 
-1. Open the repo's **GitHub Releases** page and find the pre-release tagged
-   `beta-vX.Y.Z-beta.N` (marked "Pre-release").
+1. Open the repo's **GitHub Releases** page and find the pre-release tagged `beta-vX.Y.Z`
+   (marked "Pre-release").
 2. Download the `.vsix` file attached to that release.
 3. In VS Code: **Extensions view ▸ "…" menu (top-right) ▸ "Install from VSIX…"** ▸ select the
    downloaded file.
@@ -71,17 +71,14 @@ This sideloaded installation receives **no** auto-update — to get a new beta b
 steps above with the latest `.vsix`.
 
 As long as the same target stable version requires multiple beta rounds, `package.json` stays
-the same; each push to `beta` creates a **new** `beta-vX.Y.Z-beta.N` Pre-Release (build `N`
-incrementing) rather than replacing the previous one. Only the next feature goal increments
-the target version itself (and resets `N` back to `1`).
-
-To check exactly which build is currently the latest for a target version, list matching tags
-newest-first:
+the same; each push to `beta` **updates the same** `beta-vX.Y.Z` Pre-Release (tag and `.vsix`
+are replaced in place) rather than creating a new one. To check which commit is actually behind
+the current `.vsix`, look at the version footer inside the extension itself (see the note above)
+or run:
 ```bash
 git fetch --tags
-git tag -l 'beta-v1.2.3-beta.*' --sort=-v:refname
+git rev-parse beta-v1.3.3
 ```
-or check the GitHub Releases page / the Actions run history for `beta-release.yml`.
 
 ---
 
@@ -143,12 +140,12 @@ Marketplace Pre-Release channel.
   Both `beta` and `main` carry the same planned version — the difference lies only in the tag.
 - **GitHub tags** separate Beta and Stable:
   - **Stable:** `vX.Y.Z` (e.g. `v1.3.0`) — pushes `release.yml` → Marketplace publish + Auto-Update.
-  - **Beta:** `beta-vX.Y.Z-beta.N` (e.g. `beta-v1.3.0-beta.1`, `beta-v1.3.0-beta.2`, …) —
-    created by `beta-release.yml`, GitHub Pre-Release/`.vsix` only. Does not start with `v`, so
-    it **never** matches the `v*` trigger of `release.yml` and cannot trigger a Stable publish.
-    `N` is a plain SemVer pre-release identifier applied only to the tag/filename (never to
-    `package.json`, which VS Code requires to stay a bare `X.Y.Z`) so that every beta build for
-    the same target version gets its own, individually identifiable release.
+  - **Beta:** `beta-vX.Y.Z` (e.g. `beta-v1.3.0`) — created/updated in place by `beta-release.yml`,
+    GitHub Pre-Release/`.vsix` only. Does not start with `v`, so it **never** matches the `v*`
+    trigger of `release.yml` and cannot trigger a Stable publish. Multiple beta rounds for the
+    same target version replace this same tag/release rather than accumulating separate ones —
+    see "Identifying a specific beta build" above for how to tell which commit a given `.vsix`
+    build came from.
 - **MINOR/PATCH** as usual: Feature → bump MINOR, Bugfix → bump PATCH, Breaking → bump MAJOR.
 - **Maintain `CHANGELOG.md`:** The Marketplace displays it in the "Changelog" tab. Collect changes
   under `## [Unreleased]`; when promoting, this becomes `## [X.Y.Z] – YYYY-MM-DD`.

@@ -118,9 +118,11 @@ Full playbook: [docs/RELEASE.md](docs/RELEASE.md).
   set tag `vX.Y.Z`). The final tag triggers the Marketplace publish.
 - Versioning scheme: **strict SemVer** with no special rules. `package.json` carries the
   target stable version `X.Y.Z` (VS Code requires this field to stay a bare `X.Y.Z`, no
-  suffix); beta vs. stable is distinguished **only** by the tag: beta =
-  `beta-vX.Y.Z-beta.N` (GitHub only, `N` auto-incremented per target version by
-  `beta-release.yml` so each beta build gets its own release), stable = `vX.Y.Z`
-  (Marketplace). No even/odd MINOR rule.
+  suffix); beta vs. stable is distinguished **only** by the tag: beta = `beta-vX.Y.Z`
+  (GitHub only, updated in place on every push to `beta`), stable = `vX.Y.Z` (Marketplace).
+  No even/odd MINOR rule. To identify which commit a running beta build came from, check
+  the short commit SHA shown next to the version in the connection form's footer (baked in
+  at build time — see [src/webviews/templates.ts](src/webviews/templates.ts) and
+  [webpack.config.js](webpack.config.js)).
 
 See code standards: [CONTRIBUTING.md](CONTRIBUTING.md).

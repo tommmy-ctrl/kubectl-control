@@ -438,6 +438,11 @@ export function lockHtml(nonce: string, cspSource: string, lang: Lang): string {
 export function formHtml(nonce: string, cspSource: string, version: string, lang: Lang): string {
     // version originates from package.json (semver); restrict to a safe charset defensively.
     const safeVersion = String(version).replace(/[^0-9A-Za-z.+-]/g, '').slice(0, 40) || 'unknown';
+    // Short commit SHA baked in at build time (webpack DefinePlugin, see webpack.config.js).
+    // Lets a sideloaded beta build be identified even though package.json's version stays the
+    // same across beta rounds. Omitted for local/dev builds where it's just 'dev'.
+    const buildSha = process.env.BUILD_SHA;
+    const buildSuffix = buildSha && buildSha !== 'dev' ? ` (${buildSha.replace(/[^0-9A-Za-z]/g, '').slice(0, 12)})` : '';
     const nsPrefix = wt(lang, 'Namespace: {0}').split('{0}')[0];
     const [ctxPrefix, ctxRest] = wt(lang, '{0} context{1} detected').split('{0}');
     const [ctxMid, ctxSuffix] = ctxRest.split('{1}');
@@ -586,7 +591,7 @@ export function formHtml(nonce: string, cspSource: string, version: string, lang
         </div>
     </form>
 
-    <div class="version-footer" title="${wt(lang, 'Installed version of kubectl-control')}">kubectl-control v${safeVersion}</div>
+    <div class="version-footer" title="${wt(lang, 'Installed version of kubectl-control')}">kubectl-control v${safeVersion}${buildSuffix}</div>
 
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
