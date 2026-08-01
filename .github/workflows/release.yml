@@ -73,7 +73,7 @@ jobs:
           fi
 
       - name: Create GitHub Release & upload .vsix
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: kubectl-control.vsix
           # Prefer the curated CHANGELOG section; fall back to auto-generated notes.

@@ -73,7 +73,7 @@ jobs:
         run: vsce package --pre-release --out kubectl-control-${{ steps.ver.outputs.version }}.vsix
 
       - name: Create / update GitHub Pre-Release (sideload .vsix)
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: beta-v${{ steps.ver.outputs.version }}
           name: Beta v${{ steps.ver.outputs.version }}
