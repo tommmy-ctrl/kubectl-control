@@ -289,7 +289,7 @@
     "webpack-cli": "^7.2.1"
   },
   "dependencies": {
-    "js-yaml": "^5.2.1",
+    "js-yaml": "^5.3.0",
     "uuid": "^14.0.1"
   }
 }

@@ -63,6 +63,10 @@ namespace — they are simply GitHub pre-release `.vsix` files under the tag `be
 ### Security
 - **`.gitignore` hardened:** added `.env`/`.env.*`, the CI-generated `resources/icon.png`,
   and common OS/editor cruft (`.DS_Store`, `Thumbs.db`, `*.log`).
+- **js-yaml updated to 5.3.0** (from 5.2.1) — closes a high-severity ReDoS advisory
+  ([GHSA-pm4m-ph32-ghv5](https://github.com/advisories/GHSA-pm4m-ph32-ghv5)) in the YAML
+  parser used for kubeconfig import/export. API-compatible (`load`/`dump`), required to
+  keep `npm audit --omit=dev --audit-level=high` clean for the release gate.
 
 ## [1.2.2] – 2026-07-07
 
