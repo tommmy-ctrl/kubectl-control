@@ -44,6 +44,16 @@ namespace — they are simply GitHub pre-release `.vsix` files under the tag `be
   you tell which commit a given sideloaded build actually came from. See
   [docs/RELEASE.md](docs/RELEASE.md).
 
+### Fixed
+- **`EACCES: permission denied` opening cluster terminals on shared/multi-user machines.**
+  Temporary kubeconfig files were written to a fixed, unversioned directory name under
+  `os.tmpdir()` (e.g. `/tmp/kubectl-control-ext`). On POSIX systems this directory is shared
+  across all local users; whichever user's process created it first "owned" it (mode
+  `0o700`), so every other OS user then failed to open terminals with `EACCES`. The temp
+  directory is now scoped per OS username (`kubectl-control-ext-<username>`), shared between
+  [src/kubectlExec.ts](src/kubectlExec.ts) and [src/terminalManager.ts](src/terminalManager.ts)
+  so each user always gets a directory they own.
+
 ### Removed
 - **Dead code:** unused `src/terminal.ts` wrapper.
 - **Unused `@vscode/l10n` / `@vscode/l10n-dev` tooling and the `l10n/` bundle folder** —

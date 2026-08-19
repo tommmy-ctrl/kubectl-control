@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { ClusterProfile, ClusterStore, ShellType } from './store';
 import { log } from './logger';
 import { t } from './i18n';
+import { TEMP_DIR, ensureTempDir } from './kubectlExec';
 
 // On Windows, prefer Git Bash if present; fall back to undefined (VS Code default shell) so the terminal still opens.
 function resolveShellPath(shell: ShellType): string | undefined {
@@ -285,13 +285,12 @@ export class TerminalManager implements vscode.Disposable {
     }
 
     private tempFilePath(clusterId: string): string {
-        return path.join(os.tmpdir(), 'kubectl-control-ext', `kubeconfig-${clusterId}.yaml`);
+        return path.join(TEMP_DIR, `kubeconfig-${clusterId}.yaml`);
     }
 
     private async openNew(profile: ClusterProfile): Promise<void> {
         try {
-            const tempDir = path.join(os.tmpdir(), 'kubectl-control-ext');
-            await fs.mkdir(tempDir, { recursive: true, mode: 0o700 });
+            await ensureTempDir();
 
             const kubeconfigPath = this.tempFilePath(profile.id);
             await fs.writeFile(kubeconfigPath, profile.kubeconfigData, { encoding: 'utf-8', mode: 0o600 });
@@ -363,13 +362,12 @@ export class TerminalManager implements vscode.Disposable {
     }
 
     async cleanupOrphanedTempFiles(): Promise<void> {
-        const tempDir = path.join(os.tmpdir(), 'kubectl-control-ext');
         try {
-            const entries = await fs.readdir(tempDir);
+            const entries = await fs.readdir(TEMP_DIR);
             await Promise.all(
                 entries
                     .filter(f => f.startsWith('kubeconfig-') && f.endsWith('.yaml'))
-                    .map(f => fs.unlink(path.join(tempDir, f)).catch(() => undefined)),
+                    .map(f => fs.unlink(path.join(TEMP_DIR, f)).catch(() => undefined)),
             );
             if (entries.length > 0) {
                 log.info(`Cleaned up ${entries.length} orphaned temp kubeconfig file(s)`);
