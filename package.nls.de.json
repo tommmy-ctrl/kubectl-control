@@ -24,5 +24,9 @@
   "config.autoLockMinutes.description": "Minuten bis zur automatischen Sperrung bei Inaktivität (0 = deaktiviert)",
   "config.statusCheckIntervalSeconds.description": "Intervall in Sekunden für den automatischen Cluster-Statuscheck (0 = deaktiviert)",
   "config.customTerminalPrompt.description": "Setzt in Terminals einen Prompt „kubectl@<Verbindungsname> >\" (bash/zsh/PowerShell; cmd ohne Farbe). Farbe pro Verbindung einstellbar.",
+  "config.language.description": "UI-Sprache der Erweiterung. \"auto\" folgt der Anzeigesprache von VS Code.",
+  "config.language.enum.auto": "Anzeigesprache von VS Code übernehmen",
+  "config.language.enum.en": "Englisch",
+  "config.language.enum.de": "Deutsch",
   "view.connectionsView.name": "Verbindungen"
 }
