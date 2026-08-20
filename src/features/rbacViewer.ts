@@ -4,6 +4,7 @@ import { ClusterStore, ClusterProfile } from '../store';
 import { execWithKubeconfig } from '../kubectlExec';
 import { ClusterTreeItem } from '../treeDataProvider';
 import { log } from '../logger';
+import { t } from '../i18n';
 
 // ── Validation helpers ────────────────────────────────────────────────────────
 
@@ -13,9 +14,9 @@ const VERB_RE = /^[a-z][a-z0-9-]*$/;
 const RESOURCE_RE = /^[a-z][a-z0-9-]*$/;
 
 function validateNamespace(value: string): string | undefined {
-    if (!value) { return vscode.l10n.t('Namespace darf nicht leer sein.'); }
-    if (value.length > NS_MAX) { return vscode.l10n.t('Namespace darf maximal {0} Zeichen lang sein.', NS_MAX); }
-    if (!NS_RE.test(value)) { return vscode.l10n.t('Namespace muss RFC1123 entsprechen (Kleinbuchstaben, Ziffern, Bindestriche).'); }
+    if (!value) { return t('Namespace must not be empty.'); }
+    if (value.length > NS_MAX) { return t('Namespace must be at most {0} characters long.', NS_MAX); }
+    if (!NS_RE.test(value)) { return t('Namespace must comply with RFC1123 (lowercase letters, digits, hyphens).'); }
     return undefined;
 }
 
@@ -171,18 +172,18 @@ function buildWebviewHtml(
 async function pickCluster(store: ClusterStore): Promise<ClusterProfile | undefined> {
     const clusters = await store.getClusters();
     if (clusters.length === 0) {
-        vscode.window.showWarningMessage(vscode.l10n.t('Keine Cluster konfiguriert.'));
+        vscode.window.showWarningMessage(t('No clusters configured.'));
         return undefined;
     }
     const items = clusters.map(c => ({ label: c.name, description: c.activeContext ?? '', cluster: c }));
-    const picked = await vscode.window.showQuickPick(items, { title: vscode.l10n.t('Cluster auswählen'), placeHolder: vscode.l10n.t('Cluster …') });
+    const picked = await vscode.window.showQuickPick(items, { title: t('Select cluster'), placeHolder: t('Cluster …') });
     return picked?.cluster;
 }
 
 async function pickNamespace(defaultNs: string): Promise<string | undefined> {
     return vscode.window.showInputBox({
-        title: vscode.l10n.t('Namespace'),
-        prompt: vscode.l10n.t('Namespace eingeben (RFC1123)'),
+        title: t('Namespace'),
+        prompt: t('Enter namespace (RFC1123)'),
         value: defaultNs,
         validateInput: validateNamespace,
     });
@@ -225,7 +226,7 @@ async function runAuthCanI(
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error('rbacViewer: auth can-i --list failed', err);
-        vscode.window.showErrorMessage(vscode.l10n.t('kubectl auth can-i --list fehlgeschlagen: {0}', msg));
+        vscode.window.showErrorMessage(t('kubectl auth can-i --list failed: {0}', msg));
         return;
     }
 
@@ -278,24 +279,24 @@ async function runAuthCanIVerb(
     if (!profile) { return; }
 
     const verb = await vscode.window.showInputBox({
-        title: vscode.l10n.t('Verb (z.B. get, list, delete)'),
-        prompt: vscode.l10n.t('kubectl-Verb eingeben'),
+        title: t('Verb (e.g. get, list, delete)'),
+        prompt: t('Enter kubectl verb'),
         placeHolder: 'get',
         validateInput: v => {
-            if (!v) { return vscode.l10n.t('Verb darf nicht leer sein.'); }
-            if (!VERB_RE.test(v)) { return vscode.l10n.t('Verb muss mit einem Kleinbuchstaben beginnen (nur [a-z0-9-]).'); }
+            if (!v) { return t('Verb must not be empty.'); }
+            if (!VERB_RE.test(v)) { return t('Verb must start with a lowercase letter (only [a-z0-9-]).'); }
             return undefined;
         },
     });
     if (!verb) { return; }
 
     const resource = await vscode.window.showInputBox({
-        title: vscode.l10n.t('Resource (z.B. pods, deployments)'),
-        prompt: vscode.l10n.t('Kubernetes-Resource eingeben'),
+        title: t('Resource (e.g. pods, deployments)'),
+        prompt: t('Enter Kubernetes resource'),
         placeHolder: 'pods',
         validateInput: r => {
-            if (!r) { return vscode.l10n.t('Resource darf nicht leer sein.'); }
-            if (!RESOURCE_RE.test(r)) { return vscode.l10n.t('Resource muss mit einem Kleinbuchstaben beginnen (nur [a-z0-9-]).'); }
+            if (!r) { return t('Resource must not be empty.'); }
+            if (!RESOURCE_RE.test(r)) { return t('Resource must start with a lowercase letter (only [a-z0-9-]).'); }
             return undefined;
         },
     });
@@ -317,14 +318,14 @@ async function runAuthCanIVerb(
         const answer = result.stdout.trim().toLowerCase();
         const allowed = answer === 'yes';
         const icon = allowed ? '$(check)' : '$(x)';
-        const label = allowed ? vscode.l10n.t('Erlaubt (yes)') : vscode.l10n.t('Nicht erlaubt (no)');
+        const label = allowed ? t('Allowed (yes)') : t('Not allowed (no)');
         vscode.window.showInformationMessage(
             `${icon} ${profile.name} / ${namespace}: kubectl auth can-i ${verb} ${resource} → ${label}`,
         );
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error('rbacViewer: auth can-i verb check failed', err);
-        vscode.window.showErrorMessage(vscode.l10n.t('kubectl auth can-i fehlgeschlagen: {0}', msg));
+        vscode.window.showErrorMessage(t('kubectl auth can-i failed: {0}', msg));
     }
 }
 

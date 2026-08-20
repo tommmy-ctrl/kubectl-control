@@ -48,10 +48,10 @@ contexts:
 `;
 
 suite('kubeconfigParser', () => {
-    test('empty input returns valid:false with German error', () => {
+    test('empty input returns valid:false with English error', () => {
         const r = parseKubeconfig('   ');
         assert.strictEqual(r.valid, false);
-        assert.strictEqual(r.error, 'Leerer Inhalt');
+        assert.strictEqual(r.error, 'Empty content');
         assert.deepStrictEqual(r.contexts, []);
         assert.strictEqual(r.currentContext, '');
     });
@@ -106,10 +106,10 @@ suite('kubeconfigParser', () => {
         assert.strictEqual(getActiveNamespace(r), 'default');
     });
 
-    test('malformed YAML returns valid:false with Ungültiges YAML error', () => {
+    test('malformed YAML returns valid:false with Invalid YAML error', () => {
         const r = parseKubeconfig('key: [unclosed bracket\nanother: value\n');
         assert.strictEqual(r.valid, false);
-        assert.ok(r.error?.startsWith('Ungültiges YAML'));
+        assert.ok(r.error?.startsWith('Invalid YAML'));
     });
 
     test('flow-style YAML (proves js-yaml upgrade over old parser)', () => {

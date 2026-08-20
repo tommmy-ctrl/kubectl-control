@@ -1,10 +1,15 @@
-name: Beta Release (Marketplace Pre-Release)
+name: Beta Release (GitHub Pre-Release, sideload only — not published to the Marketplace)
 
 # Builds a pre-release .vsix on every push to `beta` and publishes it ONLY as a
 # GitHub Pre-Release (for sideload/testing). Betas do NOT go to the VS Code
 # Marketplace — testers install the .vsix manually and get NO auto-update.
 # Versioning is plain SemVer: package.json on `beta` carries the TARGET stable
-# version (e.g. 1.3.0). Betas are distinguished solely by the `beta-vX.Y.Z` tag.
+# version (e.g. 1.3.0) — VS Code requires this field to stay a bare X.Y.Z, no
+# suffix. Each push updates the SAME `beta-vX.Y.Z` tag/release (single entry per
+# target version, no accumulating beta.N tags). The exact build currently
+# installed is instead identifiable from inside the extension itself: the
+# short commit SHA is baked into the build and shown next to the version in
+# the connection form's footer (see src/webviews/templates.ts).
 
 on:
   push:
@@ -18,7 +23,7 @@ concurrency:
 
 jobs:
   beta:
-    name: Build & Publish Pre-Release to Marketplace
+    name: Build & Publish GitHub Pre-Release (.vsix sideload)
     runs-on: ubuntu-latest
 
     permissions:
@@ -60,6 +65,8 @@ jobs:
 
       - name: Build extension (production webpack)
         run: npm run package
+        env:
+          BUILD_SHA: ${{ github.sha }}
 
       - name: Convert SVG icon to PNG (128x128)
         run: |
@@ -77,12 +84,14 @@ jobs:
         with:
           tag_name: beta-v${{ steps.ver.outputs.version }}
           name: Beta v${{ steps.ver.outputs.version }}
+          target_commitish: ${{ github.sha }}
           prerelease: true
           generate_release_notes: true
           files: kubectl-control-${{ steps.ver.outputs.version }}.vsix
           body: |
-            Beta-Build zum **manuellen Sideload** (`.vsix` unten herunterladen →
-            VS Code ▸ Extensions ▸ „Install from VSIX…").
+            Beta build for **manual sideload** (download the `.vsix` below →
+            VS Code ▸ Extensions ▸ "Install from VSIX…"). Once installed, the exact
+            build is shown next to the version number in the connection form's footer.
 
-            Dieser Build ist **nicht** im VS Code Marketplace. Nutzer der Stable-Version
-            werden dadurch **nicht** aktualisiert.
+            This build is **not** on the VS Code Marketplace. Users of the stable
+            version are **not** updated by this.
