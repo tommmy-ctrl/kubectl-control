@@ -4,3 +4,18 @@ dist/
 .vscode-test/
 *.vsix
 .claude/
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# CI-generated (see .github/workflows/*-release.yml)
+resources/icon.png
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
+
+CLAUDE.md

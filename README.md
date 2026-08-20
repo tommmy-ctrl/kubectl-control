@@ -50,12 +50,28 @@ The CLUSTERS panel is hidden during setup and appears once setup is complete.
 |---|---|
 | Export (encrypted) | Export all connections as an encrypted JSON file |
 | Import | Import connections from a file |
+| Language | Cycles the UI language: Auto → English → German → Auto (see [Language](#language) below) |
 | Enable password lock | Prompt for a password on open |
 | Change password | Replace the current password |
 | Disable password lock | Remove the lock |
 | Lock now | Lock immediately (only when lock is active) |
 | Show debug logs | Open the Output panel with extension logs |
 | Reset application | Delete everything (double confirmation required) |
+
+## Language
+
+The extension UI is available in English and German.
+
+- **Runtime UI** (messages, quick picks, prompts, the setup/lock/connection-form screens)
+  follows the `kubectl-control.language` setting (`auto` / `en` / `de`, default `auto`).
+  `auto` follows VS Code's own display language. Change it either via **Settings menu (⚙)
+  → Language** (cycles through the three values) or in VS Code Settings
+  (`Ctrl+,` → search "Kubectl Control"). A change takes full effect after **Reload Window**
+  (the extension prompts for this automatically).
+- **Command Palette entries and settings descriptions** always follow VS Code's own display
+  language (**File → Preferences → Configure Display Language**) — this is a VS Code platform
+  behavior resolved before the extension runs, so it is not affected by the
+  `kubectl-control.language` setting above.
 
 ## Keyboard Shortcuts
 

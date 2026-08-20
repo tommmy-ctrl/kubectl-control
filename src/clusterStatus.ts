@@ -3,6 +3,7 @@ import { ClusterStore } from './store';
 import { TerminalManager } from './terminalManager';
 import { log } from './logger';
 import { execWithKubeconfig } from './kubectlExec';
+import { t } from './i18n';
 
 export type ClusterStatus = 'reachable' | 'unreachable' | 'unauthorized' | 'unknown';
 
@@ -241,11 +242,11 @@ export class ClusterStatusService implements vscode.Disposable {
 
     /** Show a one-time warning notification when a cluster's token has expired. */
     private _notifyUnauthorized(name: string): void {
-        const msg = vscode.l10n.t(
-            'Verbindung „{0}": Token abgelaufen oder ungültig (nicht authentifiziert). Bitte Kubeconfig neu importieren.',
+        const msg = t(
+            'Connection "{0}": token expired or invalid (not authenticated). Please re-import the kubeconfig.',
             name,
         );
-        const openBtn = vscode.l10n.t('Verbindungen öffnen');
+        const openBtn = t('Open connections');
 
         vscode.window.showWarningMessage(msg, openBtn).then(selection => {
             if (selection === openBtn) {

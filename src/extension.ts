@@ -13,6 +13,7 @@ import { registerResourceViewer } from './features/resourceViewer';
 import { registerPortForward } from './features/portForward';
 import { registerHelmBrowser } from './features/helmBrowser';
 import { registerRbacViewer } from './features/rbacViewer';
+import { t, refreshLanguage } from './i18n';
 
 export function activate(context: vscode.ExtensionContext) {
     const extensionVersion = String(context.extension.packageJSON.version ?? 'unknown');
@@ -27,6 +28,17 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('kubectl-control.autoLockMinutes')) {
                 lockService.setAutoLock(vscode.workspace.getConfiguration('kubectl-control').get<number>('autoLockMinutes', 0));
+            }
+            if (e.affectsConfiguration('kubectl-control.language')) {
+                refreshLanguage();
+                void vscode.window.showInformationMessage(
+                    t('Language changed. Reload the window to apply it everywhere.'),
+                    t('Reload Window'),
+                ).then(choice => {
+                    if (choice === t('Reload Window')) {
+                        void vscode.commands.executeCommand('workbench.action.reloadWindow');
+                    }
+                });
             }
         })
     );
@@ -50,7 +62,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     const activeClusterStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
     activeClusterStatus.command = 'kubectl-control.quickSwitch';
-    activeClusterStatus.tooltip = vscode.l10n.t('Aktiver Cluster – klicken zum Wechseln');
+    activeClusterStatus.tooltip = t('Active cluster – click to switch');
     context.subscriptions.push(activeClusterStatus);
 
     context.subscriptions.push(
@@ -66,8 +78,8 @@ export function activate(context: vscode.ExtensionContext) {
                 const namespaceSuffix = cluster.namespace ? ` · ${cluster.namespace}` : '';
                 activeClusterStatus.text = `$(terminal) ${cluster.name}${namespaceSuffix}${prodBadge}`;
                 activeClusterStatus.tooltip = cluster.namespace
-                    ? vscode.l10n.t('Aktiver Cluster: {0} · {1} – klicken zum Wechseln', cluster.name, cluster.namespace)
-                    : vscode.l10n.t('Aktiver Cluster – klicken zum Wechseln');
+                    ? t('Active cluster: {0} · {1} – click to switch', cluster.name, cluster.namespace)
+                    : t('Active cluster – click to switch');
                 activeClusterStatus.show();
             }
         }),

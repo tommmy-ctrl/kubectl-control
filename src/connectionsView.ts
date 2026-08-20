@@ -7,6 +7,7 @@ import { parseKubeconfig, getActiveNamespace } from './kubeconfigParser';
 import { execWithKubeconfig } from './kubectlExec';
 import { log } from './logger';
 import { welcomeHtml, lockHtml, formHtml } from './webviews/templates';
+import { t, getLanguage } from './i18n';
 
 export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'kubectl-control.connectionsView';
@@ -129,7 +130,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         const name = (msg.name ?? '').trim();
         const kubeconfigData = (msg.kubeconfigData ?? '').trim();
         if (!name || !kubeconfigData) {
-            vscode.window.showWarningMessage('Name und kubeconfig dürfen nicht leer sein.');
+            vscode.window.showWarningMessage(t('Name and kubeconfig must not be empty.'));
             return;
         }
         const parsed = parseKubeconfig(kubeconfigData);
@@ -137,9 +138,9 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         const ctx = msg.activeContext || parsed.currentContext || undefined;
         const err = await this.testConnection(kubeconfigData, ctx);
         if (err !== null) {
-            const btnSave = vscode.l10n.t('Trotzdem speichern');
+            const btnSave = t('Save anyway');
             const choice = await vscode.window.showWarningMessage(
-                vscode.l10n.t('Verbindung zu „{0}" konnte nicht verifiziert werden. Trotzdem speichern?', name),
+                t('Connection to "{0}" could not be verified. Save anyway?', name),
                 { modal: true, detail: err.slice(0, 500) },
                 btnSave,
             );
@@ -157,14 +158,14 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         log.info(`Cluster added via form: "${name}"`);
         this.onChanged();
         await this.refresh();
-        vscode.window.showInformationMessage(`Cluster '${name}' wurde hinzugefügt.`);
+        vscode.window.showInformationMessage(t("Cluster '{0}' added.", name));
     }
 
     private async updateCluster(msg: Record<string, string>): Promise<void> {
         const name = (msg.name ?? '').trim();
         const kubeconfigData = (msg.kubeconfigData ?? '').trim();
         if (!name || !kubeconfigData) {
-            vscode.window.showWarningMessage('Name und kubeconfig dürfen nicht leer sein.');
+            vscode.window.showWarningMessage(t('Name and kubeconfig must not be empty.'));
             return;
         }
         const parsed = parseKubeconfig(kubeconfigData);
@@ -172,9 +173,9 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         const ctx = msg.activeContext || parsed.currentContext || undefined;
         const err = await this.testConnection(kubeconfigData, ctx);
         if (err !== null) {
-            const btnSave = vscode.l10n.t('Trotzdem speichern');
+            const btnSave = t('Save anyway');
             const choice = await vscode.window.showWarningMessage(
-                vscode.l10n.t('Verbindung zu „{0}" konnte nicht verifiziert werden. Trotzdem speichern?', name),
+                t('Connection to "{0}" could not be verified. Save anyway?', name),
                 { modal: true, detail: err.slice(0, 500) },
                 btnSave,
             );
@@ -192,7 +193,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         log.info(`Cluster updated via form: "${name}"`);
         this.onChanged();
         await this.refresh();
-        vscode.window.showInformationMessage(`Cluster '${name}' wurde aktualisiert.`);
+        vscode.window.showInformationMessage(t("Cluster '{0}' updated.", name));
     }
 
     private async handleParseKubeconfig(yaml: string): Promise<void> {
@@ -204,7 +205,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         const uris = await vscode.window.showOpenDialog({
             filters: { 'kubeconfig (yaml/json)': ['yaml', 'yml', 'json', '*'] },
             canSelectMany: false,
-            title: 'kubeconfig-Datei auswählen',
+            title: t('Select kubeconfig file'),
         });
         if (!uris || uris.length === 0) { return; }
         try {
@@ -214,7 +215,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
             log.info(`kubeconfig file loaded: ${uris[0].fsPath}`);
         } catch (e) {
             log.error('Failed to load kubeconfig file', e);
-            vscode.window.showErrorMessage(`Datei konnte nicht geladen werden: ${e}`);
+            vscode.window.showErrorMessage(t('File could not be loaded: {0}', String(e)));
         }
     }
 
@@ -226,15 +227,15 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
     // ── HTML ────────────────────────────────────────────────────────────────
 
     private getWelcomeHtml(webview: vscode.Webview): string {
-        return welcomeHtml(getNonce(), webview.cspSource);
+        return welcomeHtml(getNonce(), webview.cspSource, getLanguage());
     }
 
     private getLockHtml(webview: vscode.Webview): string {
-        return lockHtml(getNonce(), webview.cspSource);
+        return lockHtml(getNonce(), webview.cspSource, getLanguage());
     }
 
     private getFormHtml(webview: vscode.Webview): string {
-        return formHtml(getNonce(), webview.cspSource, this.version);
+        return formHtml(getNonce(), webview.cspSource, this.version, getLanguage());
     }
 }
 

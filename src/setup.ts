@@ -7,6 +7,7 @@ import { LockService } from './lockService';
 import { decryptData, isEncryptedFile } from './crypto';
 import { parseKubeconfig } from './kubeconfigParser';
 import { log } from './logger';
+import { t } from './i18n';
 
 export const SETUP_KEY = 'kubectl-control.setupDone';
 
@@ -35,15 +36,15 @@ export async function importFile(
         let json: string;
         if (isEncryptedFile(parsed)) {
             const pwd = await vscode.window.showInputBox({
-                title: vscode.l10n.t('Importdatei entschlüsseln'),
+                title: t('Decrypt Import File'),
                 password: true,
-                prompt: vscode.l10n.t('Passwort der Exportdatei eingeben')
+                prompt: t('Enter the export file password')
             });
             if (!pwd) { return; }
             try {
                 json = decryptData(parsed, pwd);
             } catch {
-                vscode.window.showErrorMessage(vscode.l10n.t('Falsches Passwort oder beschädigte Datei.'));
+                vscode.window.showErrorMessage(t('Incorrect password or corrupted file.'));
                 return;
             }
         } else {
@@ -52,9 +53,9 @@ export async function importFile(
 
         const added = await store.importClusters(json);
         onImported();
-        vscode.window.showInformationMessage(vscode.l10n.t('Import abgeschlossen – {0} neue Verbindung(en) hinzugefügt.', added));
+        vscode.window.showInformationMessage(t('Import complete – {0} new connection(s) added.', added));
     } catch (e) {
-        vscode.window.showErrorMessage(vscode.l10n.t('Import fehlgeschlagen: {0}', String(e)));
+        vscode.window.showErrorMessage(t('Import failed: {0}', String(e)));
     }
 }
 
@@ -160,32 +161,32 @@ export async function handleImportFromKubeconfig(
 ): Promise<void> {
     const { imported, skipped } = await importFromLocalKubeconfig(store, onImported);
     if (imported === 0 && skipped === 0) {
-        vscode.window.showInformationMessage(vscode.l10n.t('Keine Contexts in ~/.kube/config gefunden.'));
+        vscode.window.showInformationMessage(t('No contexts found in ~/.kube/config.'));
     } else {
         vscode.window.showInformationMessage(
-            vscode.l10n.t('{0} Verbindung(en) aus ~/.kube/config importiert, {1} bereits vorhanden.', imported, skipped)
+            t('{0} connection(s) imported from ~/.kube/config, {1} already existed.', imported, skipped)
         );
     }
 }
 
 export async function promptSetPassword(lockService: LockService): Promise<boolean> {
     const pwd = await vscode.window.showInputBox({
-        title: vscode.l10n.t('Passwort festlegen'),
+        title: t('Set Password'),
         password: true,
-        prompt: vscode.l10n.t('Mindestens 6 Zeichen'),
-        validateInput: v => (!v || v.length < 6) ? vscode.l10n.t('Mindestens 6 Zeichen erforderlich') : undefined
+        prompt: t('At least 6 characters'),
+        validateInput: v => (!v || v.length < 6) ? t('At least 6 characters required') : undefined
     });
     if (!pwd) { return false; }
 
     const confirm = await vscode.window.showInputBox({
-        title: vscode.l10n.t('Passwort bestätigen'),
+        title: t('Confirm Password'),
         password: true,
-        prompt: vscode.l10n.t('Passwort wiederholen'),
-        validateInput: v => v === pwd ? undefined : vscode.l10n.t('Passwörter stimmen nicht überein')
+        prompt: t('Repeat password'),
+        validateInput: v => v === pwd ? undefined : t('Passwords do not match')
     });
     if (confirm !== pwd) { return false; }
 
     await lockService.enableLock(pwd);
-    vscode.window.showInformationMessage(vscode.l10n.t('Passwort-Schutz aktiviert.'));
+    vscode.window.showInformationMessage(t('Password protection enabled.'));
     return true;
 }
