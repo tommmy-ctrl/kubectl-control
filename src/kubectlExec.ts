@@ -10,12 +10,20 @@ const execFileAsync = promisify(execFile);
 // SECURITY: only allow safe context names to avoid argument injection
 const SAFE_CONTEXT_RE = /^[a-zA-Z0-9._-]+$/;
 
-const TEMP_DIR = path.join(os.tmpdir(), 'kubectl-control-ext');
+// SECURITY/BUGFIX: os.tmpdir() (e.g. /tmp) is shared across all local users on
+// POSIX systems. A fixed directory name means whichever user's process creates
+// it first "owns" it (mode 0o700), and every other user then fails with EACCES
+// on mkdir/writeFile against a directory they don't own. Scoping the directory
+// name by OS username gives every user their own directory, so no collision is
+// possible.
+const SAFE_TEMP_SEGMENT_RE = /[^a-zA-Z0-9._-]/g;
+const safeUser = os.userInfo().username.replace(SAFE_TEMP_SEGMENT_RE, '_') || 'user';
+export const TEMP_DIR = path.join(os.tmpdir(), `kubectl-control-ext-${safeUser}`);
 
 // Cache the mkdir so it only runs once per process lifetime
 let _tempDirReady: Promise<void> | undefined;
 
-function ensureTempDir(): Promise<void> {
+export function ensureTempDir(): Promise<void> {
     if (!_tempDirReady) {
         _tempDirReady = fs.mkdir(TEMP_DIR, { recursive: true, mode: 0o700 }).then(() => undefined);
     }

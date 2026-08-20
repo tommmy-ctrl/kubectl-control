@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { ClusterProfile, ClusterStore, ShellType } from './store';
 import { log } from './logger';
+import { t } from './i18n';
+import { TEMP_DIR, ensureTempDir } from './kubectlExec';
 
 // On Windows, prefer Git Bash if present; fall back to undefined (VS Code default shell) so the terminal still opens.
 function resolveShellPath(shell: ShellType): string | undefined {
@@ -154,10 +155,10 @@ export class TerminalManager implements vscode.Disposable {
 
     private async showConptyError(): Promise<void> {
         log.warn('Terminal closed immediately after launch — possible ConPTY error on Windows');
-        const btnEinstellungAktivieren = vscode.l10n.t('Einstellung aktivieren');
-        const btnHilfeAnzeigen = vscode.l10n.t('Hilfe anzeigen');
+        const btnEinstellungAktivieren = t('Enable Setting');
+        const btnHilfeAnzeigen = t('Show Help');
         const choice = await vscode.window.showErrorMessage(
-            vscode.l10n.t('Das Terminal konnte nicht gestartet werden. Auf Windows kann dies an einem ConPTY-Problem liegen.'),
+            t('The terminal could not be started. On Windows this may be caused by a ConPTY issue.'),
             btnEinstellungAktivieren,
             btnHilfeAnzeigen,
         );
@@ -228,9 +229,9 @@ export class TerminalManager implements vscode.Disposable {
             if (!openAnyway) { return; }
         }
         if (profile.isProd) {
-            const btnOeffnen = vscode.l10n.t('Öffnen');
+            const btnOeffnen = t('Open');
             const confirm = await vscode.window.showWarningMessage(
-                vscode.l10n.t('⚠️ "{0}" ist eine Produktionsumgebung. Terminal wirklich öffnen?', profile.name),
+                t('⚠️ "{0}" is a production environment. Really open terminal?', profile.name),
                 { modal: true },
                 btnOeffnen,
             );
@@ -270,10 +271,10 @@ export class TerminalManager implements vscode.Disposable {
 
     private async showKubectlMissingWarning(): Promise<{ openAnyway: boolean }> {
         log.warn('kubectl not found in PATH — showing install prompt');
-        const btnInstallieren = vscode.l10n.t('kubectl installieren');
-        const btnTrotzdemOeffnen = vscode.l10n.t('Trotzdem öffnen');
+        const btnInstallieren = t('Install kubectl');
+        const btnTrotzdemOeffnen = t('Open anyway');
         const choice = await vscode.window.showWarningMessage(
-            vscode.l10n.t('kubectl wurde nicht in PATH gefunden. Bitte installieren, um Terminals zu nutzen.'),
+            t('kubectl was not found in PATH. Please install it to use terminals.'),
             btnInstallieren,
             btnTrotzdemOeffnen,
         );
@@ -284,13 +285,12 @@ export class TerminalManager implements vscode.Disposable {
     }
 
     private tempFilePath(clusterId: string): string {
-        return path.join(os.tmpdir(), 'kubectl-control-ext', `kubeconfig-${clusterId}.yaml`);
+        return path.join(TEMP_DIR, `kubeconfig-${clusterId}.yaml`);
     }
 
     private async openNew(profile: ClusterProfile): Promise<void> {
         try {
-            const tempDir = path.join(os.tmpdir(), 'kubectl-control-ext');
-            await fs.mkdir(tempDir, { recursive: true, mode: 0o700 });
+            await ensureTempDir();
 
             const kubeconfigPath = this.tempFilePath(profile.id);
             await fs.writeFile(kubeconfigPath, profile.kubeconfigData, { encoding: 'utf-8', mode: 0o600 });
@@ -320,7 +320,7 @@ export class TerminalManager implements vscode.Disposable {
                 } else {
                     log.warn(`Skipping auto use-context: unsafe context name "${profile.activeContext}"`);
                     vscode.window.showWarningMessage(
-                        vscode.l10n.t('Context "{0}" enthält ungültige Zeichen und wurde nicht automatisch gesetzt.', profile.activeContext),
+                        t('Context "{0}" contains invalid characters and was not set automatically.', profile.activeContext),
                     );
                 }
             }
@@ -347,7 +347,7 @@ export class TerminalManager implements vscode.Disposable {
             // break out of the echo argument in any shell.
             if (profile.isProd === true) {
                 const safeName = sanitizePromptName(profile.name);
-                terminal.sendText(`echo "${vscode.l10n.t('⚠️  ACHTUNG: Dies ist eine PRODUKTIONSUMGEBUNG ({0}). Änderungen wirken sich direkt aus.', safeName)}"`);
+                terminal.sendText(`echo "${t('⚠️  WARNING: This is a PRODUCTION ENVIRONMENT ({0}). Changes take effect immediately.', safeName)}"`);
             }
 
             this.openTerminals.set(profile.id, terminal);
@@ -357,18 +357,17 @@ export class TerminalManager implements vscode.Disposable {
             log.info(`Terminal opened for "${profile.name}" (shell=${profile.shell ?? 'default'})`);
         } catch (e) {
             log.error(`Failed to open terminal for "${profile.name}"`, e);
-            vscode.window.showErrorMessage(vscode.l10n.t('Terminal konnte nicht geöffnet werden: {0}', String(e)));
+            vscode.window.showErrorMessage(t('Terminal could not be opened: {0}', String(e)));
         }
     }
 
     async cleanupOrphanedTempFiles(): Promise<void> {
-        const tempDir = path.join(os.tmpdir(), 'kubectl-control-ext');
         try {
-            const entries = await fs.readdir(tempDir);
+            const entries = await fs.readdir(TEMP_DIR);
             await Promise.all(
                 entries
                     .filter(f => f.startsWith('kubeconfig-') && f.endsWith('.yaml'))
-                    .map(f => fs.unlink(path.join(tempDir, f)).catch(() => undefined)),
+                    .map(f => fs.unlink(path.join(TEMP_DIR, f)).catch(() => undefined)),
             );
             if (entries.length > 0) {
                 log.info(`Cleaned up ${entries.length} orphaned temp kubeconfig file(s)`);
