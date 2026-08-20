@@ -1,115 +1,128 @@
-# CLAUDE.md — Agent- & Arbeitsstandards für `kubectl-control`
+# CLAUDE.md — Agent & Workflow Standards for `kubectl-control`
 
-Diese Datei wird automatisch in jede Claude-Code-Session geladen. Sie definiert, **wie** in
-diesem Repository gearbeitet wird — sowohl für den Haupt-Agenten als auch für Subagents.
-
----
-
-## 1. Projektüberblick
-
-`kubectl-control` ist eine VS-Code-Extension zur Verwaltung mehrerer Kubernetes-Cluster mit
-isolierten Kubeconfig-Terminals, Gruppen, verschlüsseltem Export/Import, GitHub-Gist-Sync,
-Namespace-Wechsel, Pinning, Prod-Markierung und Auto-Lock.
-
-- **Sprache UI:** Deutsch (i18n über `vscode.l10n` / `package.nls*.json`).
-- **Stack:** TypeScript, Webpack-Bundle, Mocha + `@vscode/test-electron`.
-- **Einstiegspunkt:** [src/extension.ts](src/extension.ts).
-- **Quellmodule:** `src/*.ts` (Kernlogik) und `src/features/*.ts` (optionale Feature-Module).
-
-### Wichtige Architekturpunkte
-- **Secrets** (Kubeconfigs, Passwort-Hashes, Sync-Token) gehören **immer** in
-  `vscode.SecretStorage`, niemals in `globalState` oder auf Platte im Klartext.
-- **kubectl/helm-Aufrufe** laufen über [src/kubectlExec.ts](src/kubectlExec.ts)
-  (`execWithKubeconfig` / `createPersistentKubeconfig`) — temporäre Kubeconfig mit `0o600`,
-  Temp-Dir `0o700`, Argumente **immer als Array** an `execFile`/`spawn` (nie als Shell-String).
-- **Persistenz** läuft über [src/store.ts](src/store.ts) mit Write-Mutex, In-Memory-Cache und
-  Schema-Versionierung — Mutationen niemals an der Serialisierung vorbei.
+This file is automatically loaded into every Claude Code session. It defines **how** work
+happens in this repository — both for the main agent and for subagents.
 
 ---
 
-## 2. Goldene Regeln (gelten für jeden Agent)
+## 1. Project Overview
 
-1. **Build muss grün bleiben.** Nach jeder Änderung an `.ts`/`package.json`:
-   `npx tsc --noEmit -p .` ausführen. Vor Abschluss zusätzlich `npx webpack --mode production`.
-2. **Keine Geheimnisse loggen oder im Klartext speichern.** Siehe Security-Standards unten.
-3. **Shell-Sicherheit:** Nutzereingaben (Cluster-/Context-/Namespace-Namen, Ports, Ressourcen)
-   werden **vor** der Verwendung validiert (Regex) und nur als Argument-Array übergeben.
-4. **Nur additiv an `package.json`/Manifest.** Bestehende Commands/Menüs/Configs nicht entfernen.
-5. **Deutsche UI-Strings** über `vscode.l10n.t(...)`; neue Manifest-Titel über NLS-Keys.
-6. **Keine neuen Laufzeit-Abhängigkeiten** ohne klaren Grund; `devDependencies` bevorzugen.
+`kubectl-control` is a VS Code extension for managing multiple Kubernetes clusters with
+isolated kubeconfig terminals, groups, encrypted export/import, GitHub Gist sync,
+namespace switching, pinning, production marking, and auto-lock.
 
----
+- **UI language:** Bilingual, English (default) / German. Manifest strings (command titles,
+  config descriptions) use VS Code's NLS mechanism (`package.nls.json` / `package.nls.de.json`),
+  following VS Code's own display language. Runtime strings (messages, prompts, webview text) use
+  the custom `t()` helper in [src/i18n.ts](src/i18n.ts), which additionally honors the
+  `kubectl-control.language` setting (`auto`/`en`/`de`). See CONTRIBUTING.md §i18n for details.
+- **Stack:** TypeScript, Webpack bundle, Mocha + `@vscode/test-electron`.
+- **Entry point:** [src/extension.ts](src/extension.ts).
+- **Source modules:** `src/*.ts` (core logic) and `src/features/*.ts` (optional feature modules).
 
-## 3. Arbeiten mit Subagents (Parallelisierung)
-
-Dieses Repo wird häufig mit mehreren parallelen Subagents bearbeitet. Damit das konfliktfrei
-bleibt, gilt:
-
-- **Datei-Disjunktheit ist Pflicht.** Jeder parallele Agent besitzt einen **exklusiven** Satz
-  an Dateien. Zwei Agents dürfen nie dieselbe Datei gleichzeitig editieren.
-- **Geteilte Dateien sequenziell.** `package.json`, `src/extension.ts` und `src/commands.ts`
-  sind „Hub-Dateien". Änderungen daran laufen in einer **eigenen, alleinigen** Welle
-  (Wiring-Agent), nachdem die Feature-Module fertig sind.
-- **Neue Features = neues Modul.** Ein Feature lebt in `src/features/<name>.ts` und exportiert
-  `registerXxx(context, store): vscode.Disposable[]`. Verdrahtung (Manifest + `extension.ts`)
-  übernimmt anschließend ein separater Wiring-Schritt.
-- **Refactorings vor Features.** Erst gemeinsame Utilities/Fundament (datei-disjunkt, parallel),
-  dann Features darauf.
-- **Transiente Fehler ignorieren.** Läuft `tsc` projektweit, kann es Fehler in Dateien melden,
-  die ein *anderer* paralleler Agent gerade halbfertig hat. Jeder Agent bewertet nur Fehler in
-  **seinen eigenen** Dateien; der Haupt-Agent macht am Ende einen vollständigen grünen Build.
-- **i18n zuletzt und allein.** String-Externalisierung fasst alle Dateien an und läuft als
-  letzte, alleinige Welle.
-
-### Standard-Prompt-Bausteine für Subagents
-> „Du darfst NUR `<Datei(en)>` ändern. Lies andere Dateien, ändere sie nicht. Nach der Änderung
-> `npx tsc --noEmit -p .` ausführen und nur Fehler in deiner Datei bewerten. Argumente immer als
-> Array, Nutzereingaben validieren, Secrets nur in SecretStorage. Berichte Änderungen mit
-> `Datei:Zeile`."
+### Key Architecture Points
+- **Secrets** (kubeconfigs, password hashes, sync tokens) always belong in
+  `vscode.SecretStorage`, never in `globalState` or on disk in plaintext.
+- **kubectl/helm calls** go through [src/kubectlExec.ts](src/kubectlExec.ts)
+  (`execWithKubeconfig` / `createPersistentKubeconfig`) — temporary kubeconfig with `0o600`,
+  temp dir `0o700`, arguments **always as an array** to `execFile`/`spawn` (never as a shell string).
+- **Persistence** runs through [src/store.ts](src/store.ts) with a write mutex, in-memory
+  cache, and schema versioning — mutations must never bypass serialization.
 
 ---
 
-## 4. Security-Standards
+## 2. Golden Rules (apply to every agent)
 
-- Secrets ausschließlich in `vscode.SecretStorage`.
-- Krypto: AES-256-GCM + PBKDF2 (≥ 200 000 Iterationen), Salt/IV pro Operation zufällig,
-  `timingSafeEqual` für Vergleiche. Krypto-Code zentral in [src/crypto.ts](src/crypto.ts) — nicht
-  duplizieren.
-- CSP-Nonces in Webviews mit `crypto.randomBytes`, **nie** `Math.random()`.
-- Jede Webview: strikte CSP mit Nonce, **alle** dynamischen Werte HTML-escapen.
-- Kein `exec` mit interpoliertem Shell-String. Context-Namen gegen `/^[a-zA-Z0-9._-]+$/`,
-  Namespaces gegen RFC-1123 `/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/` (max 63) prüfen.
-- `npm audit --omit=dev --audit-level=high` muss im Release-Gate sauber sein.
-- Vor jedem Release: `/security-review` über den Diff laufen lassen.
+1. **The build must stay green.** After every change to `.ts`/`package.json`:
+   run `npx tsc --noEmit -p .`. Before finishing, also run `npx webpack --mode production`.
+2. **Never log or store secrets in plaintext.** See security standards below.
+3. **Shell safety:** user input (cluster/context/namespace names, ports, resources)
+   is validated (regex) **before** use and passed only as an argument array.
+4. **Additive-only changes to `package.json`/manifest.** Do not remove existing
+   commands/menus/configs.
+5. **Bilingual UI strings:** new runtime strings via `t('English text', ...)` from
+   [src/i18n.ts](src/i18n.ts) plus a matching entry in
+   [src/i18n/translations.de.ts](src/i18n/translations.de.ts); new manifest titles via NLS keys
+   in both `package.nls.json` (English) and `package.nls.de.json` (German).
+6. **No new runtime dependencies** without a clear reason; prefer `devDependencies`.
 
 ---
 
-## 5. Befehle (Cheat-Sheet)
+## 3. Working with Subagents (Parallelization)
+
+This repo is frequently worked on with multiple parallel subagents. To keep that
+conflict-free, the following applies:
+
+- **File disjointness is mandatory.** Every parallel agent owns an **exclusive** set
+  of files. Two agents must never edit the same file at the same time.
+- **Shared files run sequentially.** `package.json`, `src/extension.ts`, and `src/commands.ts`
+  are "hub files." Changes to them run in their **own, exclusive** wave
+  (a wiring agent) after the feature modules are done.
+- **New features = new module.** A feature lives in `src/features/<name>.ts` and exports
+  `registerXxx(context, store): vscode.Disposable[]`. Wiring (manifest + `extension.ts`)
+  is then handled by a separate wiring step.
+- **Refactors before features.** First build shared utilities/foundations (file-disjoint,
+  parallel), then features on top of them.
+- **Ignore transient errors.** When `tsc` runs project-wide, it may report errors in files
+  that a *different* parallel agent currently has half-finished. Each agent evaluates only
+  errors in **its own** files; the main agent does a full green build at the end.
+- **i18n last and alone.** String externalization touches all files and runs as the
+  last, exclusive wave.
+
+### Standard Prompt Building Blocks for Subagents
+> "You may ONLY modify `<file(s)>`. Read other files, do not change them. After the change,
+> run `npx tsc --noEmit -p .` and evaluate only errors in your file. Arguments always as an
+> array, validate user input, secrets only in SecretStorage. Report changes as
+> `file:line`."
+
+---
+
+## 4. Security Standards
+
+- Secrets exclusively in `vscode.SecretStorage`.
+- Crypto: AES-256-GCM + PBKDF2 (≥ 200,000 iterations), salt/IV random per operation,
+  `timingSafeEqual` for comparisons. Crypto code centralized in [src/crypto.ts](src/crypto.ts) —
+  do not duplicate.
+- CSP nonces in webviews via `crypto.randomBytes`, **never** `Math.random()`.
+- Every webview: strict CSP with nonce, **all** dynamic values HTML-escaped.
+- No `exec` with interpolated shell strings. Validate context names against
+  `/^[a-zA-Z0-9._-]+$/`, namespaces against RFC-1123 `/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/` (max 63).
+- `npm audit --omit=dev --audit-level=high` must be clean in the release gate.
+- Before every release: run `/security-review` over the diff.
+
+---
+
+## 5. Commands (Cheat Sheet)
 
 ```bash
 npm run compile          # webpack (dev)
-npm run watch            # webpack --watch
-npm run package          # webpack production build (-> dist/)
-npm run compile-tests    # tsc -> out/ (für Tests)
-npm run lint             # eslint (flat config: eslint.config.js)
-npm test                 # @vscode/test-electron (Linux-CI: via xvfb-run)
-npx tsc --noEmit -p .    # reiner Typecheck (Pflicht nach jeder Änderung)
+npm run watch             # webpack --watch
+npm run package           # webpack production build (-> dist/)
+npm run compile-tests     # tsc -> out/ (for tests)
+npm run lint               # eslint (flat config: eslint.config.js)
+npm test                   # @vscode/test-electron (Linux CI: via xvfb-run)
+npx tsc --noEmit -p .      # pure type check (mandatory after every change)
 ```
 
 ---
 
-## 6. Release-/Branch-Prozess (Kurzfassung)
+## 6. Release/Branch Process (Short Version)
 
-Vollständiges Playbook: [docs/RELEASE.md](docs/RELEASE.md).
+Full playbook: [docs/RELEASE.md](docs/RELEASE.md).
 
-- `main` = produktive, veröffentlichte Version (Marketplace).
-- `beta` = Vorab-Integration. Push auf `beta` baut automatisch ein **GitHub Pre-Release**
-  mit `.vsix` (kein Marketplace, **kein** Auto-Update beim manuellen Sideload).
-- Feature-Arbeit auf `feature/*` → PR nach `beta`.
-- **Beta → Prod** über den `promote`-Workflow (oder manuell: `beta` nach `main` mergen + Tag
-  `vX.Y.Z` setzen). Der finale Tag triggert Marketplace-Publish.
-- Versionsschema: **striktes SemVer** ohne Sonderregeln. `package.json` trägt die Ziel-Stable-
-  Version `X.Y.Z`; Beta vs. Stable wird **nur** über das Tag-Präfix getrennt: Beta = `beta-vX.Y.Z`
-  (GitHub-only), Stable = `vX.Y.Z` (Marketplace). Keine gerade/ungerade-MINOR-Regel.
+- `main` = production, published version (Marketplace).
+- `beta` = pre-release integration. A push to `beta` automatically builds a **GitHub
+  pre-release** with a `.vsix` (no Marketplace, **no** auto-update on manual sideload).
+- Feature work on `feature/*` → PR to `beta`.
+- **Beta → Prod** via the `promote` workflow (or manually: merge `beta` into `main` +
+  set tag `vX.Y.Z`). The final tag triggers the Marketplace publish.
+- Versioning scheme: **strict SemVer** with no special rules. `package.json` carries the
+  target stable version `X.Y.Z` (VS Code requires this field to stay a bare `X.Y.Z`, no
+  suffix); beta vs. stable is distinguished **only** by the tag: beta = `beta-vX.Y.Z`
+  (GitHub only, updated in place on every push to `beta`), stable = `vX.Y.Z` (Marketplace).
+  No even/odd MINOR rule. To identify which commit a running beta build came from, check
+  the short commit SHA shown next to the version in the connection form's footer (baked in
+  at build time — see [src/webviews/templates.ts](src/webviews/templates.ts) and
+  [webpack.config.js](webpack.config.js)).
 
-Siehe Code-Standards: [CONTRIBUTING.md](CONTRIBUTING.md).
+See code standards: [CONTRIBUTING.md](CONTRIBUTING.md).

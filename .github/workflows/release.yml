@@ -47,6 +47,8 @@ jobs:
 
       - name: Build extension
         run: npm run package   # webpack production build
+        env:
+          BUILD_SHA: ${{ github.sha }}
 
       - name: Install vsce
         run: npm install -g @vscode/vsce
