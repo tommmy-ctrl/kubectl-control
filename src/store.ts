@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { v4 as uuidv4 } from 'uuid';
 import { log } from './logger';
+import { t } from './i18n';
 
 export type ShellType = 'default' | 'bash' | 'zsh' | 'powershell' | 'cmd';
 
@@ -218,7 +219,7 @@ export class ClusterStore {
         let added = 0;
         this._writeQueue = this._writeQueue.then(async () => {
             const incoming = JSON.parse(json) as ClusterProfile[];
-            if (!Array.isArray(incoming)) { throw new TypeError('Ungültiges Format'); }
+            if (!Array.isArray(incoming)) { throw new TypeError(t('Invalid format')); }
             const existing = await this.getClusters();
             const existingIds = new Set(existing.map(c => c.id));
             const merged = [...existing];
