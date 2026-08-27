@@ -116,13 +116,21 @@ Full playbook: [docs/RELEASE.md](docs/RELEASE.md).
 - Feature work on `feature/*` → PR to `beta`.
 - **Beta → Prod** via the `promote` workflow (or manually: merge `beta` into `main` +
   set tag `vX.Y.Z`). The final tag triggers the Marketplace publish.
+- **Marketplace pre-release (occasional, deliberate — not the default path):** tag `vX.Y.Z-pre`
+  pushed directly from a `beta` commit (no promote to `main` needed) triggers `release.yml` in
+  pre-release mode (`vsce publish --pre-release`). Unlike the GitHub-only `beta-vX.Y.Z` channel,
+  this *does* show up in Marketplace search and *does* auto-update, but only for users who
+  opted into "Switch to Pre-Release Version". **Every version published this way is burned for
+  stable use** — the eventual stable promotion must use a higher `X.Y.Z`, never the same one.
+  See [docs/RELEASE.md](docs/RELEASE.md) §1b before using this.
 - Versioning scheme: **strict SemVer** with no special rules. `package.json` carries the
   target stable version `X.Y.Z` (VS Code requires this field to stay a bare `X.Y.Z`, no
-  suffix); beta vs. stable is distinguished **only** by the tag: beta = `beta-vX.Y.Z`
-  (GitHub only, updated in place on every push to `beta`), stable = `vX.Y.Z` (Marketplace).
-  No even/odd MINOR rule. To identify which commit a running beta build came from, check
-  the short commit SHA shown next to the version in the connection form's footer (baked in
-  at build time — see [src/webviews/templates.ts](src/webviews/templates.ts) and
+  suffix); the three channels are distinguished **only** by the tag: GitHub-only beta =
+  `beta-vX.Y.Z` (updated in place on every push to `beta`), Marketplace pre-release =
+  `vX.Y.Z-pre`, stable = `vX.Y.Z` (Marketplace). No even/odd MINOR rule. To identify which
+  commit a running beta build came from, check the short commit SHA shown next to the version
+  in the connection form's footer (baked in at build time — see
+  [src/webviews/templates.ts](src/webviews/templates.ts) and
   [webpack.config.js](webpack.config.js)).
 
 See code standards: [CONTRIBUTING.md](CONTRIBUTING.md).

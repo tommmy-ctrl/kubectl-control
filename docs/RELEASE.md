@@ -6,27 +6,38 @@ builds are deployed **without** VS Code automatically updating them.
 ## Overview
 
 ```
-feature/*  ──PR──▶  beta  ──(Promote workflow)──▶  main ──Tag vX.Y.Z──▶  Marketplace
+feature/*  ──PR──▶  beta  ──(Promote workflow)──▶  main ──Tag vX.Y.Z──▶  Marketplace (stable)
                      │                                      │
-            Push triggers beta-release.yml          Tag triggers release.yml
-            → GitHub *Pre-Release* + .vsix          → GitHub Release + vsce publish
-            (Sideload, NO Marketplace,                (Auto-Update for users)
+                     │                              Tag vX.Y.Z-pre ──▶  Marketplace (pre-release)
+                     │
+            Push triggers beta-release.yml
+            → GitHub *Pre-Release* + .vsix
+            (Sideload, NO Marketplace,
              NO Auto-Update)
 ```
 
-| Branch | Purpose | `package.json` Version | Publication | Auto-Update |
+| Branch / Tag | Purpose | `package.json` Version | Publication | Auto-Update |
 |--------|---------|------------------------|-------------|-------------|
 | `feature/*` | Development | – | – | – |
-| `beta` | Pre-integration / Testing | Target-Stable `X.Y.Z` | GitHub **Pre-Release** (`.vsix`), Tag `beta-vX.Y.Z` | No — manually via "Install from VSIX…" |
-| `main` | Production | `X.Y.Z` | Marketplace + GitHub Release, Tag `vX.Y.Z` | Yes |
+| `beta` (push) | Pre-integration / Testing | Target-Stable `X.Y.Z` | GitHub **Pre-Release** (`.vsix`), Tag `beta-vX.Y.Z` | No — manually via "Install from VSIX…" |
+| Tag `vX.Y.Z-pre` | Marketplace pre-release | `X.Y.Z` (suffix stripped for the manifest) | Marketplace (`--pre-release` flag) + GitHub Release | Yes — but only for users who opted into the Extensions view's "Switch to Pre-Release Version" |
+| Tag `vX.Y.Z` (`main`) | Production | `X.Y.Z` | Marketplace + GitHub Release | Yes |
 
-> **Why no Marketplace Pre-Release channel?** The VS Code Marketplace does **not** support
-> SemVer suffixes and shares the same version space for Pre-Release and Stable. This forces
-> either a confusing parity convention (even/odd MINOR) or version collisions. We avoid both:
-> **Betas run exclusively as GitHub `.vsix` for sideloading.** `package.json` on `beta` always
-> carries the plain **target stable version** `X.Y.Z` — VS Code requires this field to stay a
-> bare `X.Y.Z` with no suffix, so it cannot encode the beta round. When promoting, exactly this
-> version becomes stable.
+> **Two separate pre-release mechanisms, on purpose.** `beta-vX.Y.Z` (GitHub-only `.vsix`
+> sideload) stays the default for day-to-day testing — no Marketplace footprint, no risk to
+> the version history. `vX.Y.Z-pre` is a **deliberate, occasional** escalation for when a
+> feature needs a wider pre-release audience than manual sideload testers, via VS Code's own
+> built-in pre-release channel. It is not the default path — reach for it only when you
+> specifically need that.
+>
+> **The lesson from the past `1.3.0`–`1.3.2` incident (see the `1.2.1`/`1.3.3` CHANGELOG
+> entries) still applies and is not solved, only made deliberate:** the Marketplace shares one
+> version space between stable and pre-release, and never lets the highest-ever-published
+> version be deleted from history. **Every version number published via `vX.Y.Z-pre` is burned
+> for stable use** — you can never later publish that exact `X.Y.Z` as a stable release; the
+> eventual stable promotion must use a higher version (e.g. pre-release `1.4.0` → stable
+> `1.4.1` or `1.5.0`, not `1.4.0` again). Plan the target stable version accordingly *before*
+> pushing a `-pre` tag, and only use this path when you've accepted that trade-off.
 >
 > **Identifying a specific beta build:** since `package.json` intentionally does not change
 > between beta rounds of the same target version, and each push to `beta` updates the **same**
@@ -82,6 +93,32 @@ git rev-parse beta-v1.3.3
 
 ---
 
+## 1b. Publishing a Marketplace Pre-Release (occasional, deliberate)
+
+Use this only when a feature needs testing by people who won't manually sideload a `.vsix` —
+otherwise stick to the `beta-vX.Y.Z` flow above.
+
+```bash
+git checkout beta                    # or whatever commit you want to ship as pre-release
+npm version 1.4.0 --no-git-tag-version --allow-same-version   # target version, see the warning above
+git commit -am "chore: pre-release 1.4.0"
+git push origin beta
+git tag v1.4.0-pre
+git push origin v1.4.0-pre           # triggers release.yml in pre-release mode
+```
+
+[`release.yml`](../.github/workflows/release.yml) detects the `-pre` suffix, strips it for the
+`package.json`/`vsce package` version (VS Code requires a bare `X.Y.Z`), and passes
+`--pre-release` to both `vsce package` and `vsce publish`. The GitHub Release is created with
+`prerelease: true`. It does **not** touch `main` — a `-pre` tag can be pushed straight from a
+`beta` commit without promoting anything.
+
+Testers opt in via **Extensions view ▸ kubectl-control ▸ "Switch to Pre-Release Version"** — this
+*does* show up in Marketplace search (unlike the GitHub-only beta channel) and *does* auto-update
+for anyone who has opted in, straight to whatever the next `-pre` or stable publish is.
+
+---
+
 ## 2. Promoting Beta → Prod
 
 ### Option A — Automatic (recommended)
@@ -117,12 +154,14 @@ git push origin v1.3.0      # triggers release.yml
 
 | Secret | Purpose | Workflow |
 |--------|---------|----------|
-| `VSCE_PAT` | Marketplace publish (`vsce publish`) — **Stable only** | `release.yml` |
+| `VSCE_PAT` | Marketplace publish (`vsce publish`) — stable **and** `-pre` tags | `release.yml` |
 | `RELEASE_PAT` | Tag push that triggers `release.yml` (optional) | `promote.yml` |
 
 `GITHUB_TOKEN` (automatic) is sufficient for GitHub Releases and asset uploads. `beta-release.yml`
 only runs `vsce package` (a local build, no Marketplace interaction) and therefore needs neither
-secret — betas never touch the Marketplace, see the note in section 1 above.
+secret — the GitHub-only beta channel never touches the Marketplace, see the note in section 1
+above. `release.yml` uses the same `VSCE_PAT` for both stable (`vX.Y.Z`) and pre-release
+(`vX.Y.Z-pre`) tags — see section 1b.
 
 > **`RELEASE_PAT`:** Only needed if you want the Promote workflow to run fully automatically
 > through to the Marketplace publish. Without it: `promote.yml` merges and tags, but
@@ -133,19 +172,27 @@ secret — betas never touch the Marketplace, see the note in section 1 above.
 
 ## 4. Versioning Rules
 
-We use **strict SemVer without special rules**. There is no even/odd MINOR convention and no
-Marketplace Pre-Release channel.
+We use **strict SemVer**. There is no even/odd MINOR convention. There **is** a Marketplace
+Pre-Release channel (section 1b) — deliberately used only occasionally, never as the default
+path, because of the version-burning trade-off explained in the Overview.
 
-- **`package.json` version:** always the **target stable version** `X.Y.Z` (e.g. `1.3.0`).
-  Both `beta` and `main` carry the same planned version — the difference lies only in the tag.
-- **GitHub tags** separate Beta and Stable:
-  - **Stable:** `vX.Y.Z` (e.g. `v1.3.0`) — pushes `release.yml` → Marketplace publish + Auto-Update.
-  - **Beta:** `beta-vX.Y.Z` (e.g. `beta-v1.3.0`) — created/updated in place by `beta-release.yml`,
-    GitHub Pre-Release/`.vsix` only. Does not start with `v`, so it **never** matches the `v*`
-    trigger of `release.yml` and cannot trigger a Stable publish. Multiple beta rounds for the
-    same target version replace this same tag/release rather than accumulating separate ones —
-    see "Identifying a specific beta build" above for how to tell which commit a given `.vsix`
-    build came from.
+- **`package.json` version:** always the **target stable version** `X.Y.Z` (e.g. `1.3.0`), with
+  no suffix — VS Code requires this field to stay bare, so it never encodes beta/pre-release
+  rounds. `beta` and `main` carry the same planned version; a `-pre` tag strips its own suffix
+  before it reaches `package.json` (see section 1b).
+- **GitHub tags** separate the three channels:
+  - **Stable:** `vX.Y.Z` (e.g. `v1.3.0`) — pushes `release.yml` in stable mode → Marketplace
+    publish + Auto-Update for everyone.
+  - **Marketplace pre-release:** `vX.Y.Z-pre` (e.g. `v1.4.0-pre`) — pushes `release.yml` in
+    pre-release mode (`--pre-release`) → Marketplace publish + Auto-Update, but only for users
+    who opted into VS Code's pre-release toggle. See section 1b for the trade-off before using
+    this.
+  - **GitHub-only beta:** `beta-vX.Y.Z` (e.g. `beta-v1.3.0`) — created/updated in place by
+    `beta-release.yml`, GitHub Pre-Release/`.vsix` only. Does not start with `v`, so it **never**
+    matches the `v*` trigger of `release.yml` and cannot reach the Marketplace. Multiple beta
+    rounds for the same target version replace this same tag/release rather than accumulating
+    separate ones — see "Identifying a specific beta build" above for how to tell which commit a
+    given `.vsix` build came from.
 - **MINOR/PATCH** as usual: Feature → bump MINOR, Bugfix → bump PATCH, Breaking → bump MAJOR.
 - **Maintain `CHANGELOG.md`:** The Marketplace displays it in the "Changelog" tab. Collect changes
   under `## [Unreleased]`; when promoting, this becomes `## [X.Y.Z] – YYYY-MM-DD`.

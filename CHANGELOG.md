@@ -3,11 +3,22 @@
 All notable changes to this extension are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [SemVer](https://semver.org/): each stable release
-increments `MAJOR.MINOR.PATCH` in the usual way. Betas are not a separate version
-namespace — they are simply GitHub pre-release `.vsix` files under the tag `beta-vX.Y.Z`
+increments `MAJOR.MINOR.PATCH` in the usual way. Day-to-day betas are not a separate version
+namespace — they are simply GitHub pre-release `.vsix` files under the tag `beta-vX.Y.Z`.
+Occasionally a version is instead published on the Marketplace's own Pre-Release channel
+(tag `vX.Y.Z-pre`, opt-in via "Switch to Pre-Release Version") — those entries say so explicitly
 (see [docs/RELEASE.md](docs/RELEASE.md)).
 
-## [Unreleased]
+## [1.4.0] – 2026-08-27
+
+> **First release on the Marketplace Pre-Release channel.** Published via a new `vX.Y.Z-pre`
+> git tag (see [docs/RELEASE.md](docs/RELEASE.md) §1b) rather than a stable `vX.Y.Z` tag — opt
+> in via Extensions view ▸ kubectl-control ▸ "Switch to Pre-Release Version". This is a
+> deliberate, occasional escalation beyond the usual GitHub-only `beta-vX.Y.Z` sideload channel,
+> not a reversal of the reasoning behind removing the old always-on Marketplace pre-release
+> channel (see the `1.2.1`/`1.3.3` entries below) — that trade-off (this exact version number
+> can never be published as stable afterwards) still applies and was accepted knowingly for
+> this release.
 
 ### Added
 - **Multiple terminals per cluster.** A new "+" inline action (`$(terminal-add)`) on each
@@ -18,6 +29,11 @@ namespace — they are simply GitHub pre-release `.vsix` files under the tag `be
   deleted once the last one closes. Namespace switches (`kubectl-control.switchNamespace`)
   now apply to every open terminal for the cluster, not just one.
   ([src/terminalManager.ts](src/terminalManager.ts), [src/treeDataProvider.ts](src/treeDataProvider.ts))
+
+### Changed
+- **`release.yml` now supports a `vX.Y.Z-pre` tag** for occasional Marketplace pre-release
+  publishes, alongside the existing stable `vX.Y.Z` tag. See
+  [docs/RELEASE.md](docs/RELEASE.md) §1b for when to use it and its version-numbering trade-off.
 
 ## [1.3.3] – 2026-07-08
 

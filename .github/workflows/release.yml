@@ -10,10 +10,12 @@ jobs:
     name: Build, Package & Publish
     runs-on: ubuntu-latest
 
-    # Only run for stable release tags of the form vX.Y.Z (plain SemVer, no suffix).
-    # Beta tags are prefixed `beta-v…` and never match the `v*` trigger, so they
-    # cannot reach this workflow; the `-` guard is an extra safety net.
-    if: ${{ !contains(github.ref_name, '-') }}
+    # Runs for stable release tags vX.Y.Z, and for Marketplace pre-release tags
+    # vX.Y.Z-pre (see docs/RELEASE.md — the deliberate, documented pre-release
+    # channel, distinct from the GitHub-only beta-v… sideload tags). Beta tags
+    # are prefixed `beta-v…` and never match the `v*` trigger at all; the guard
+    # below is an extra safety net against any other unexpected hyphenated tag.
+    if: ${{ !contains(github.ref_name, '-') || endsWith(github.ref_name, '-pre') }}
 
     permissions:
       contents: write   # needed to upload release assets
@@ -40,10 +42,24 @@ jobs:
           sudo apt-get install -y librsvg2-bin
           rsvg-convert -w 128 -h 128 resources/icon.svg -o resources/icon.png
 
+      - name: Determine version and channel from tag
+        id: meta
+        run: |
+          REF="${GITHUB_REF_NAME#v}"          # e.g. "1.4.0-pre" or "1.4.0"
+          if [[ "$REF" == *-pre ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "version=${REF%-pre}" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "version=$REF" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set version from git tag
         # --allow-same-version: package.json is usually already at this version
-        # (set during promote), so npm must not error when it is unchanged.
-        run: npm version "${GITHUB_REF_NAME#v}" --allow-same-version --no-git-tag-version
+        # (set during promote), so npm must not error when it is unchanged. The
+        # manifest version itself never carries the -pre suffix — VS Code
+        # requires a bare X.Y.Z; steps.meta strips it above.
+        run: npm version "${{ steps.meta.outputs.version }}" --allow-same-version --no-git-tag-version
 
       - name: Build extension
         run: npm run package   # webpack production build
@@ -54,12 +70,17 @@ jobs:
         run: npm install -g @vscode/vsce
 
       - name: Package .vsix
-        run: vsce package --out kubectl-control.vsix
+        run: |
+          if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
+            vsce package --pre-release --out kubectl-control.vsix
+          else
+            vsce package --out kubectl-control.vsix
+          fi
 
       - name: Extract release notes from CHANGELOG.md
         id: notes
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ steps.meta.outputs.version }}"
           # Print the section body between "## [VERSION]" and the next "## " heading.
           awk -v ver="$VERSION" '
             $0 ~ "^## \\[" ver "\\]" { capture=1; next }
@@ -78,11 +99,17 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: kubectl-control.vsix
+          prerelease: ${{ steps.meta.outputs.prerelease }}
           # Prefer the curated CHANGELOG section; fall back to auto-generated notes.
           body_path: ${{ steps.notes.outputs.found == 'true' && 'RELEASE_NOTES.md' || '' }}
           generate_release_notes: ${{ steps.notes.outputs.found != 'true' }}
 
       - name: Publish to VS Code Marketplace
-        run: vsce publish --packagePath kubectl-control.vsix
+        run: |
+          if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
+            vsce publish --pre-release --packagePath kubectl-control.vsix
+          else
+            vsce publish --packagePath kubectl-control.vsix
+          fi
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
