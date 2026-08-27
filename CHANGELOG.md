@@ -1,13 +1,13 @@
 # Changelog
 
 All notable changes to this extension are documented here.
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-versioning follows [SemVer](https://semver.org/): each stable release
-increments `MAJOR.MINOR.PATCH` in the usual way. Day-to-day betas are not a separate version
-namespace — they are simply GitHub pre-release `.vsix` files under the tag `beta-vX.Y.Z`.
-Occasionally a version is instead published on the Marketplace's own Pre-Release channel
-(tag `vX.Y.Z-pre`, opt-in via "Switch to Pre-Release Version") — those entries say so explicitly
-(see [docs/RELEASE.md](docs/RELEASE.md)).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Versioning: **stable releases are always `X.Y.0`**; beta and pre-release dev rounds use `X.Y.Z`
+with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number (see
+[docs/RELEASE.md](docs/RELEASE.md) for the rationale). Day-to-day betas are GitHub pre-release
+`.vsix` files under the tag `beta-vX.Y.Z`; occasionally a dev round is instead (or additionally)
+published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
+"Switch to Pre-Release Version") — those entries say so explicitly.
 
 ## [1.4.1] – 2026-08-27
 
