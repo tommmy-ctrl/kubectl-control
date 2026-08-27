@@ -9,7 +9,7 @@ Occasionally a version is instead published on the Marketplace's own Pre-Release
 (tag `vX.Y.Z-pre`, opt-in via "Switch to Pre-Release Version") — those entries say so explicitly
 (see [docs/RELEASE.md](docs/RELEASE.md)).
 
-## [1.5.0] – 2026-08-27
+## [1.4.1] – 2026-08-27
 
 ### Added
 - **"Close All Terminals" per cluster.** New context-menu action (`$(close-all)`) on a cluster
