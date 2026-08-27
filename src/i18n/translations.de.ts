@@ -187,6 +187,7 @@ export const de: Record<string, string> = {
     '\n⚠️ Token expired or invalid — not authenticated. Re-import kubeconfig.\n':
         '\n⚠️ Token abgelaufen oder ungültig — nicht authentifiziert. Kubeconfig neu importieren.\n',
     "\n_Terminal is open_": '\n_Terminal ist geöffnet_',
+    '\n_{0} terminals are open_': '\n_{0} Terminals sind geöffnet_',
     'Open Terminal': 'Terminal öffnen',
 
     // ── store.ts ─────────────────────────────────────────────────────────────

@@ -53,6 +53,11 @@
         "title": "%command.openTerminal%"
       },
       {
+        "command": "kubectl-control.openNewTerminal",
+        "title": "%command.openNewTerminal%",
+        "icon": "$(terminal-add)"
+      },
+      {
         "command": "kubectl-control.settingsMenu",
         "title": "%command.settingsMenu%",
         "icon": "$(gear)"
@@ -211,6 +216,11 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "kubectl-control.openNewTerminal",
+          "when": "view == kubectl-control.clustersView && viewItem == cluster",
+          "group": "inline@0"
+        },
         {
           "command": "kubectl-control.editCluster",
           "when": "view == kubectl-control.clustersView && viewItem == cluster",

@@ -3,6 +3,7 @@
   "command.deleteCluster": "Verbindung löschen",
   "command.editCluster": "Verbindung bearbeiten",
   "command.openTerminal": "Terminal öffnen",
+  "command.openNewTerminal": "Neues Terminal öffnen",
   "command.settingsMenu": "Einstellungen",
   "command.quickSwitch": "Kubectl Control: Quick Switch Cluster",
   "command.showLogs": "Kubectl Control: Debug-Logs anzeigen",

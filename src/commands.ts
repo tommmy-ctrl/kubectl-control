@@ -65,6 +65,14 @@ export function registerCommands(
         await terminalManager.openOrFocus(item.profile);
     });
 
+    // "+" inline action on a cluster row: always opens an additional terminal,
+    // even if one (or more) is already open — unlike openTerminal, which focuses.
+    const openNewTerminalCmd = vscode.commands.registerCommand('kubectl-control.openNewTerminal', async (item: ClusterTreeItem) => {
+        if (!item) { return; }
+        if (!await assertUnlocked()) { return; }
+        await terminalManager.openAdditional(item.profile);
+    });
+
     // Quick-Switch: Ctrl+Shift+K — pick cluster from all saved, open/focus terminal
     const quickSwitchCmd = vscode.commands.registerCommand('kubectl-control.quickSwitch', async () => {
         if (!await assertUnlocked()) { return; }
@@ -253,7 +261,7 @@ export function registerCommands(
     });
 
     context.subscriptions.push(
-        deleteClusterCmd, editClusterCmd, openTerminalCmd,
+        deleteClusterCmd, editClusterCmd, openTerminalCmd, openNewTerminalCmd,
         quickSwitchCmd, showLogsCmd, settingsMenuCmd,
         switchNamespaceCmd, togglePinCmd, toggleProdCmd,
         vscode.commands.registerCommand('kubectl-control.syncNow',     () => void gistSync.setupOrPush().catch(e => log.error(`syncNow failed: ${e}`))),

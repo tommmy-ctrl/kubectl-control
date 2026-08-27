@@ -31,20 +31,25 @@ export class ClusterGroupItem extends vscode.TreeItem {
 export class ClusterTreeItem extends vscode.TreeItem {
     constructor(
         public readonly profile: ClusterProfile,
-        hasTerminal: boolean,
+        terminalCount: number,
         status: ClusterStatus = 'unknown',
     ) {
         super(profile.name, vscode.TreeItemCollapsibleState.None);
         this.id = profile.id;
 
+        const hasTerminal = terminalCount > 0;
         const ns = profile.namespace ?? 'default';
 
-        // Build description: prod marker first, then ns, then terminal indicator, then status
+        // Build description: prod marker first, then ns, then terminal indicator (●, or ●×N
+        // once more than one terminal is open for this cluster), then status
         let desc = '';
         if (profile.isProd === true) {
             desc += '🔴 ';
         }
-        desc += hasTerminal ? `${ns}  ●` : ns;
+        desc += ns;
+        if (hasTerminal) {
+            desc += terminalCount > 1 ? `  ●×${terminalCount}` : '  ●';
+        }
         if (status === 'reachable') {
             desc += ' 🟢';
         } else if (status === 'unreachable') {
@@ -63,7 +68,8 @@ export class ClusterTreeItem extends vscode.TreeItem {
             (profile.isProd ? t('\n⚠️ Production environment — changes take effect immediately\n') : '') +
             (status === 'unreachable' ? t('\n⚠️ Cluster unreachable\n') : '') +
             (status === 'unauthorized' ? t('\n⚠️ Token expired or invalid — not authenticated. Re-import kubeconfig.\n') : '') +
-            (hasTerminal ? t('\n_Terminal is open_') : '');
+            (terminalCount > 1 ? t('\n_{0} terminals are open_', terminalCount)
+                : hasTerminal ? t('\n_Terminal is open_') : '');
         this.tooltip = new vscode.MarkdownString(tooltipLines);
 
         if (profile.isProd === true && !hasTerminal) {
@@ -149,7 +155,7 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
             const sorted = sortClusters(element.clusters);
             return sorted.map(c => new ClusterTreeItem(
                 c,
-                this.terminalManager.isOpen(c.id),
+                this.terminalManager.openCount(c.id),
                 this.clusterStatusService?.getStatus(c.id) ?? 'unknown',
             ));
         }
@@ -187,7 +193,7 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
         for (const c of sortedUngrouped) {
             nodes.push(new ClusterTreeItem(
                 c,
-                this.terminalManager.isOpen(c.id),
+                this.terminalManager.openCount(c.id),
                 this.clusterStatusService?.getStatus(c.id) ?? 'unknown',
             ));
         }

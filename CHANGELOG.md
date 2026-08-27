@@ -7,6 +7,18 @@ increments `MAJOR.MINOR.PATCH` in the usual way. Betas are not a separate versio
 namespace — they are simply GitHub pre-release `.vsix` files under the tag `beta-vX.Y.Z`
 (see [docs/RELEASE.md](docs/RELEASE.md)).
 
+## [Unreleased]
+
+### Added
+- **Multiple terminals per cluster.** A new "+" inline action (`$(terminal-add)`) on each
+  cluster row in the tree opens an additional terminal for that cluster instead of just
+  focusing the existing one. Terminals beyond the first are numbered in their tab title
+  (e.g. "☸ prod (2)"), and the tree description shows a `●×N` indicator once more than one
+  is open. All terminals for a cluster share the same temp kubeconfig file; it's only
+  deleted once the last one closes. Namespace switches (`kubectl-control.switchNamespace`)
+  now apply to every open terminal for the cluster, not just one.
+  ([src/terminalManager.ts](src/terminalManager.ts), [src/treeDataProvider.ts](src/treeDataProvider.ts))
+
 ## [1.3.3] – 2026-07-08
 
 > **Why the jump from 1.2.2 to 1.3.3?** An earlier mistake published `1.3.0`–`1.3.2` to the
