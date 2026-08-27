@@ -2,7 +2,7 @@
   "name": "kubectl-control",
   "displayName": "Kubectl Control",
   "description": "Manage multiple Kubernetes clusters with isolated kubeconfig terminals, group support, and encrypted export/import.",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "author": "Tom Kölsch",
   "publisher": "tommmy-ctrl",
   "license": "MIT",
@@ -56,6 +56,21 @@
         "command": "kubectl-control.openNewTerminal",
         "title": "%command.openNewTerminal%",
         "icon": "$(terminal-add)"
+      },
+      {
+        "command": "kubectl-control.closeAllTerminals",
+        "title": "%command.closeAllTerminals%",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "kubectl-control.filterClusters",
+        "title": "%command.filterClusters%",
+        "icon": "$(search)"
+      },
+      {
+        "command": "kubectl-control.clearClusterFilter",
+        "title": "%command.clearClusterFilter%",
+        "icon": "$(close)"
       },
       {
         "command": "kubectl-control.settingsMenu",
@@ -213,6 +228,16 @@
           "command": "kubectl-control.settingsMenu",
           "when": "view == kubectl-control.connectionsView",
           "group": "navigation"
+        },
+        {
+          "command": "kubectl-control.filterClusters",
+          "when": "view == kubectl-control.clustersView && !kubectl-control.hasClusterFilter",
+          "group": "navigation"
+        },
+        {
+          "command": "kubectl-control.clearClusterFilter",
+          "when": "view == kubectl-control.clustersView && kubectl-control.hasClusterFilter",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -240,6 +265,11 @@
           "command": "kubectl-control.toggleProd",
           "when": "view == kubectl-control.clustersView && viewItem == cluster",
           "group": "1_actions@2"
+        },
+        {
+          "command": "kubectl-control.closeAllTerminals",
+          "when": "view == kubectl-control.clustersView && viewItem == cluster",
+          "group": "1_actions@3"
         },
         {
           "command": "kubectl-control.listPods",

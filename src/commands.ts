@@ -73,6 +73,39 @@ export function registerCommands(
         await terminalManager.openAdditional(item.profile);
     });
 
+    // Closes every open terminal for a cluster at once. No lock check — closing
+    // exposes nothing new, same as the other terminal-closing paths (e.g. deleteCluster).
+    const closeAllTerminalsCmd = vscode.commands.registerCommand('kubectl-control.closeAllTerminals', (item: ClusterTreeItem) => {
+        if (!item) { return; }
+        const count = terminalManager.openCount(item.profile.id);
+        if (count === 0) {
+            vscode.window.showInformationMessage(t('No terminals are open for "{0}".', item.profile.name));
+            return;
+        }
+        terminalManager.closeForCluster(item.profile.id);
+    });
+
+    // Search icon in the clustersView title bar: prompts for a name/namespace/group
+    // substring and filters the tree. Mirrors the filter back into the InputBox so it's
+    // editable, and tracks kubectl-control.hasClusterFilter so the title bar can swap
+    // between the "Filter" and "Clear Filter" icons (see package.json when-clauses).
+    const filterClustersCmd = vscode.commands.registerCommand('kubectl-control.filterClusters', async () => {
+        const input = await vscode.window.showInputBox({
+            title: t('Filter Clusters'),
+            prompt: t('Filter by name, namespace, or group'),
+            value: treeProvider.getFilter(),
+            placeHolder: t('e.g. prod, staging, team-a…'),
+        });
+        if (input === undefined) { return; } // cancelled — leave the existing filter as-is
+        treeProvider.setFilter(input);
+        await vscode.commands.executeCommand('setContext', 'kubectl-control.hasClusterFilter', treeProvider.getFilter() !== '');
+    });
+
+    const clearClusterFilterCmd = vscode.commands.registerCommand('kubectl-control.clearClusterFilter', async () => {
+        treeProvider.clearFilter();
+        await vscode.commands.executeCommand('setContext', 'kubectl-control.hasClusterFilter', false);
+    });
+
     // Quick-Switch: Ctrl+Shift+K — pick cluster from all saved, open/focus terminal
     const quickSwitchCmd = vscode.commands.registerCommand('kubectl-control.quickSwitch', async () => {
         if (!await assertUnlocked()) { return; }
@@ -261,7 +294,8 @@ export function registerCommands(
     });
 
     context.subscriptions.push(
-        deleteClusterCmd, editClusterCmd, openTerminalCmd, openNewTerminalCmd,
+        deleteClusterCmd, editClusterCmd, openTerminalCmd, openNewTerminalCmd, closeAllTerminalsCmd,
+        filterClustersCmd, clearClusterFilterCmd,
         quickSwitchCmd, showLogsCmd, settingsMenuCmd,
         switchNamespaceCmd, togglePinCmd, toggleProdCmd,
         vscode.commands.registerCommand('kubectl-control.syncNow',     () => void gistSync.setupOrPush().catch(e => log.error(`syncNow failed: ${e}`))),

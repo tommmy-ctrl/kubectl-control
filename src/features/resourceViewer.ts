@@ -2,13 +2,19 @@ import * as vscode from 'vscode';
 import * as crypto from 'node:crypto';
 import { ClusterStore, ClusterProfile } from '../store';
 import { ClusterTreeItem } from '../treeDataProvider';
-import { execWithKubeconfig } from '../kubectlExec';
+import { execWithKubeconfig, createPersistentKubeconfig, isSafeContextName } from '../kubectlExec';
 import { log } from '../logger';
+import { t } from '../i18n';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const NAMESPACE_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 const MAX_NS_LEN = 63;
+
+// Pod and container names follow the same DNS_LABEL grammar as namespaces —
+// reused here (not just NAMESPACE_RE by name) so it can never break out of the
+// `terminal.sendText()` shell string built in openPodLogs().
+const K8S_NAME_RE = NAMESPACE_RE;
 
 type ResourceKind = 'pods' | 'deployments';
 
@@ -53,17 +59,19 @@ function buildPodsHtml(nonce: string, cluster: ClusterProfile, namespace: string
         const phase = pod.status?.phase ?? 'Unknown';
         const restarts = statuses.reduce((sum, s) => sum + (s.restartCount ?? 0), 0);
         const age = formatAge(pod.metadata?.creationTimestamp);
+        const podName = pod.metadata?.name ?? '';
         return `<tr>
-            <td>${escapeHtml(pod.metadata?.name)}</td>
+            <td>${escapeHtml(podName)}</td>
             <td>${escapeHtml(readyCount)}/${escapeHtml(totalContainers)}</td>
             <td><span class="status status-${escapeHtml(phase.toLowerCase())}">${escapeHtml(phase)}</span></td>
             <td>${escapeHtml(restarts)}</td>
             <td>${escapeHtml(age)}</td>
+            <td><button class="logsBtn" data-pod="${escapeHtml(podName)}">&#128220; Logs</button></td>
         </tr>`;
     }).join('');
 
-    const thead = `<tr><th>Name</th><th>Ready</th><th>Status</th><th>Restarts</th><th>Age</th></tr>`;
-    return buildPageHtml(nonce, `Pods — ${cluster.name} / ${namespace}`, thead, rows, items.length, 'pods');
+    const thead = `<tr><th>Name</th><th>Ready</th><th>Status</th><th>Restarts</th><th>Age</th><th>Actions</th></tr>`;
+    return buildPageHtml(nonce, `Pods — ${cluster.name} / ${namespace}`, thead, rows, items.length, 'pods', 6);
 }
 
 function buildDeploymentsHtml(nonce: string, cluster: ClusterProfile, namespace: string, items: KubeDeploymentItem[]): string {
@@ -81,7 +89,7 @@ function buildDeploymentsHtml(nonce: string, cluster: ClusterProfile, namespace:
     }).join('');
 
     const thead = `<tr><th>Name</th><th>Ready</th><th>Up-to-date</th><th>Available</th></tr>`;
-    return buildPageHtml(nonce, `Deployments — ${cluster.name} / ${namespace}`, thead, rows, items.length, 'deployments');
+    return buildPageHtml(nonce, `Deployments — ${cluster.name} / ${namespace}`, thead, rows, items.length, 'deployments', 4);
 }
 
 function buildPageHtml(
@@ -91,9 +99,10 @@ function buildPageHtml(
     rows: string,
     count: number,
     kind: ResourceKind,
+    colCount: number,
 ): string {
     const emptyRow = rows.trim() === ''
-        ? `<tr><td colspan="5" class="empty">No ${kind} found.</td></tr>`
+        ? `<tr><td colspan="${colCount}" class="empty">No ${kind} found.</td></tr>`
         : rows;
 
     return `<!DOCTYPE html>
@@ -136,6 +145,10 @@ function buildPageHtml(
         }
         button:hover {
             background: var(--vscode-button-hoverBackground);
+        }
+        .logsBtn {
+            padding: 2px 10px;
+            font-size: 0.85em;
         }
         table {
             width: 100%;
@@ -185,6 +198,14 @@ function buildPageHtml(
         document.getElementById('refreshBtn').addEventListener('click', () => {
             vscode.postMessage({ command: 'refresh' });
         });
+        // Event delegation: the table body is re-rendered wholesale on every refresh,
+        // so listeners are attached once on the table rather than per-button.
+        document.querySelector('table').addEventListener('click', (event) => {
+            const btn = event.target.closest('.logsBtn');
+            if (btn) {
+                vscode.postMessage({ command: 'logs', pod: btn.dataset.pod });
+            }
+        });
     </script>
 </body>
 </html>`;
@@ -202,8 +223,12 @@ interface KubeContainerStatus {
     restartCount?: number;
 }
 
+interface KubeContainerSpec {
+    name?: string;
+}
+
 interface KubePodSpec {
-    containers?: unknown[];
+    containers?: KubeContainerSpec[];
 }
 
 interface KubePodStatus {
@@ -267,6 +292,79 @@ async function pickNamespace(cluster: ClusterProfile): Promise<string | undefine
     return input;
 }
 
+// ── Live log streaming ───────────────────────────────────────────────────────
+
+// Maps an open "logs" terminal to the cleanup for its persistent temp kubeconfig,
+// so the file is removed once the terminal (and therefore `kubectl logs -f`) closes.
+const logTerminalCleanups = new Map<vscode.Terminal, () => Promise<void>>();
+
+/**
+ * Opens `kubectl logs -f` for a pod in a new terminal. Pod/container names are
+ * validated against K8S_NAME_RE before being interpolated into the shell command
+ * sent via terminal.sendText() — same pattern as context names in terminalManager.ts.
+ */
+async function openPodLogs(
+    cluster: ClusterProfile,
+    namespace: string,
+    podName: string,
+    containers: KubeContainerSpec[],
+): Promise<void> {
+    if (!K8S_NAME_RE.test(podName)) {
+        log.warn(`openPodLogs: rejected unsafe pod name "${podName}"`);
+        void vscode.window.showErrorMessage(t('Invalid pod name: "{0}"', podName));
+        return;
+    }
+
+    const containerNames = containers
+        .map(c => c.name)
+        .filter((n): n is string => !!n && K8S_NAME_RE.test(n));
+
+    let containerArg: string | undefined;
+    let allContainers = false;
+
+    if (containerNames.length > 1) {
+        const allLabel = t('All containers (interleaved, prefixed)');
+        const choice = await vscode.window.showQuickPick([allLabel, ...containerNames], {
+            title: t('Logs for pod "{0}" — select container', podName),
+            placeHolder: t('Select container…'),
+        });
+        if (!choice) { return; }
+        if (choice === allLabel) {
+            allContainers = true;
+        } else {
+            containerArg = choice;
+        }
+    } else if (containerNames.length === 1) {
+        containerArg = containerNames[0];
+    }
+    // 0 validated container names (e.g. an unexpected shape in the API response):
+    // fall through without -c — kubectl still succeeds for genuinely single-container pods.
+
+    const { path: kubeconfigPath, cleanup } = await createPersistentKubeconfig(cluster.kubeconfigData);
+
+    const args = ['logs', '-f', podName, '-n', namespace];
+    if (cluster.activeContext && isSafeContextName(cluster.activeContext)) {
+        args.push('--context', cluster.activeContext);
+    }
+    if (allContainers) {
+        args.push('--all-containers=true', '--prefix');
+    } else if (containerArg) {
+        args.push('-c', containerArg);
+    }
+
+    const terminal = vscode.window.createTerminal({
+        name: `📜 ${podName} (${cluster.name})`,
+        env: {
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            KUBECONFIG: kubeconfigPath,
+        },
+    });
+    logTerminalCleanups.set(terminal, cleanup);
+    terminal.sendText(`kubectl ${args.join(' ')}`);
+    terminal.show();
+    log.info(`[logs] streaming pod=${podName} ns=${namespace} cluster="${cluster.name}"`);
+}
+
 async function runResourceCommand(
     kind: ResourceKind,
     treeItem: ClusterTreeItem | undefined,
@@ -298,6 +396,10 @@ async function runResourceCommand(
         { enableScripts: true, retainContextWhenHidden: true },
     );
 
+    // Snapshot of the last-rendered pods, so the 'logs' message handler can look up
+    // a pod's containers without re-fetching (only populated when kind === 'pods').
+    let lastPods: KubePodItem[] = [];
+
     // 4. Function to run and render
     async function fetch(): Promise<void> {
         try {
@@ -319,6 +421,7 @@ async function runResourceCommand(
             if (kind === 'pods') {
                 const list = JSON.parse(stdout) as KubeList<KubePodItem>;
                 const items = list.items ?? [];
+                lastPods = items;
                 panel.webview.html = buildPodsHtml(nonce, cluster!, namespace, items);
             } else {
                 const list = JSON.parse(stdout) as KubeList<KubeDeploymentItem>;
@@ -334,10 +437,17 @@ async function runResourceCommand(
         }
     }
 
-    // 5. Handle refresh messages
-    panel.webview.onDidReceiveMessage(async (message: { command: string }) => {
+    // 5. Handle refresh / logs messages
+    panel.webview.onDidReceiveMessage(async (message: { command: string; pod?: string }) => {
         if (message.command === 'refresh') {
             await fetch();
+        } else if (message.command === 'logs' && message.pod) {
+            const pod = lastPods.find(p => p.metadata?.name === message.pod);
+            if (!pod) {
+                log.warn(`resourceViewer(logs): pod "${message.pod}" not found in last-rendered list`);
+                return;
+            }
+            await openPodLogs(cluster!, namespace, message.pod, pod.spec?.containers ?? []);
         }
     });
 
@@ -365,7 +475,17 @@ export function registerResourceViewer(
         },
     );
 
-    context.subscriptions.push(listPods, listDeployments);
+    // Cleans up the persistent temp kubeconfig for a "logs" terminal once it closes
+    // (the user closing the terminal panel is how `kubectl logs -f` gets stopped).
+    const logsCleanupListener = vscode.window.onDidCloseTerminal(terminal => {
+        const cleanup = logTerminalCleanups.get(terminal);
+        if (cleanup) {
+            logTerminalCleanups.delete(terminal);
+            cleanup().catch(err => log.error('[logs] temp kubeconfig cleanup failed', err));
+        }
+    });
 
-    return [listPods, listDeployments];
+    context.subscriptions.push(listPods, listDeployments, logsCleanupListener);
+
+    return [listPods, listDeployments, logsCleanupListener];
 }

@@ -9,6 +9,23 @@ Occasionally a version is instead published on the Marketplace's own Pre-Release
 (tag `vX.Y.Z-pre`, opt-in via "Switch to Pre-Release Version") — those entries say so explicitly
 (see [docs/RELEASE.md](docs/RELEASE.md)).
 
+## [1.5.0] – 2026-08-27
+
+### Added
+- **"Close All Terminals" per cluster.** New context-menu action (`$(close-all)`) on a cluster
+  row closes every open terminal for that cluster in one step, instead of closing each one
+  individually. ([src/commands.ts](src/commands.ts))
+- **Live pod log streaming.** The Pods viewer (`kubectl-control.listPods`) now has a "📋 Logs"
+  button per row that opens `kubectl logs -f` for that pod in a new terminal, using the
+  cluster's kubeconfig automatically. Prompts for a container when a pod has more than one
+  (or offers "All containers" via `--all-containers=true --prefix`). Pod/container names are
+  validated against the same DNS_LABEL pattern used for namespaces before ever reaching the
+  shell command. ([src/features/resourceViewer.ts](src/features/resourceViewer.ts))
+- **Cluster search/filter.** A new search icon in the Clusters view title bar filters the tree
+  by name, namespace, or group (case-insensitive substring); a "No clusters match" placeholder
+  is shown when nothing matches, with a one-click way to clear the filter.
+  ([src/treeDataProvider.ts](src/treeDataProvider.ts))
+
 ## [1.4.0] – 2026-08-27
 
 > **First release on the Marketplace Pre-Release channel.** Published via a new `vX.Y.Z-pre`

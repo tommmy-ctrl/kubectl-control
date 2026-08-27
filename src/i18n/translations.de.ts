@@ -10,6 +10,10 @@ export const de: Record<string, string> = {
     "Really delete cluster '{0}'?": "Cluster '{0}' wirklich löschen?",
     'No saved connections yet.': 'Keine gespeicherten Verbindungen vorhanden.',
     'Terminal already open – focusing': 'Terminal bereits geöffnet – wird fokussiert',
+    'No terminals are open for "{0}".': 'Für "{0}" sind keine Terminals geöffnet.',
+    'Filter Clusters': 'Cluster filtern',
+    'Filter by name, namespace, or group': 'Nach Name, Namespace oder Gruppe filtern',
+    'e.g. prod, staging, team-a…': 'z.B. prod, staging, team-a…',
     'Kubectl Control – Quick Switch': 'Kubectl Control – Quick Switch',
     'Select cluster…': 'Cluster auswählen…',
     'Kubectl Control – Switch Namespace: Select Cluster': 'Kubectl Control – Namespace wechseln: Cluster wählen',
@@ -189,6 +193,15 @@ export const de: Record<string, string> = {
     "\n_Terminal is open_": '\n_Terminal ist geöffnet_',
     '\n_{0} terminals are open_': '\n_{0} Terminals sind geöffnet_',
     'Open Terminal': 'Terminal öffnen',
+    'No clusters match "{0}"': 'Keine Cluster passen zu "{0}"',
+    'Click to clear filter': 'Klicken, um den Filter zu löschen',
+    'Clear Filter': 'Filter löschen',
+
+    // ── features/resourceViewer.ts ───────────────────────────────────────────
+    'Invalid pod name: "{0}"': 'Ungültiger Pod-Name: "{0}"',
+    'All containers (interleaved, prefixed)': 'Alle Container (verschachtelt, mit Präfix)',
+    'Logs for pod "{0}" — select container': 'Logs für Pod "{0}" — Container wählen',
+    'Select container…': 'Container auswählen…',
 
     // ── store.ts ─────────────────────────────────────────────────────────────
     'Invalid format': 'Ungültiges Format',

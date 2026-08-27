@@ -7,7 +7,7 @@ import { t } from './i18n';
 
 // ── Tree node union type ──────────────────────────────────────────────────────
 
-export type ClusterTreeNode = ClusterGroupItem | ClusterTreeItem | LockedItem;
+export type ClusterTreeNode = ClusterGroupItem | ClusterTreeItem | LockedItem | NoMatchesItem;
 
 // ── Group item ────────────────────────────────────────────────────────────────
 
@@ -107,6 +107,21 @@ export class LockedItem extends vscode.TreeItem {
     }
 }
 
+// ── No-matches placeholder ────────────────────────────────────────────────────
+
+export class NoMatchesItem extends vscode.TreeItem {
+    constructor(filter: string) {
+        super(t('No clusters match "{0}"', filter), vscode.TreeItemCollapsibleState.None);
+        this.description = t('Click to clear filter');
+        this.iconPath = new vscode.ThemeIcon('circle-slash');
+        this.contextValue = 'noMatches';
+        this.command = {
+            command: 'kubectl-control.clearClusterFilter',
+            title: t('Clear Filter'),
+        };
+    }
+}
+
 // ── Sort helpers ──────────────────────────────────────────────────────────────
 
 function sortClusters(clusters: ClusterProfile[]): ClusterProfile[] {
@@ -127,6 +142,7 @@ function sortClusters(clusters: ClusterProfile[]): ClusterProfile[] {
 export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterTreeNode> {
     private readonly _onDidChangeTreeData = new vscode.EventEmitter<ClusterTreeNode | undefined | null | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+    private _filter = '';
 
     constructor(
         private readonly store: ClusterStore,
@@ -143,6 +159,21 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
 
     refresh(): void {
         this._onDidChangeTreeData.fire();
+    }
+
+    /** Current filter text (raw, as typed — not lowercased). Empty string = no filter. */
+    getFilter(): string {
+        return this._filter;
+    }
+
+    /** Sets the cluster name/namespace/group substring filter (case-insensitive) and refreshes. */
+    setFilter(text: string): void {
+        this._filter = text.trim();
+        this.refresh();
+    }
+
+    clearFilter(): void {
+        this.setFilter('');
     }
 
     getTreeItem(element: ClusterTreeNode): vscode.TreeItem {
@@ -166,7 +197,20 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
         }
 
         // Root level: build group structure
-        const clusters = await this.store.getClusters();
+        let clusters = await this.store.getClusters();
+
+        // Filter by name / namespace / group (case-insensitive substring), if set.
+        if (this._filter) {
+            const needle = this._filter.toLowerCase();
+            clusters = clusters.filter(c =>
+                c.name.toLowerCase().includes(needle) ||
+                (c.namespace ?? '').toLowerCase().includes(needle) ||
+                (c.group ?? '').toLowerCase().includes(needle));
+            if (clusters.length === 0) {
+                return [new NoMatchesItem(this._filter)];
+            }
+        }
+
         const grouped = new Map<string, ClusterProfile[]>();
         const ungrouped: ClusterProfile[] = [];
 
