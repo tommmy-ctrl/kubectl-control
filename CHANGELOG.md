@@ -9,11 +9,14 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
-## [1.4.2] – 2026-09-27
+## [1.4.3] – 2026-09-27
 
-> Marketplace **pre-release** (tag `v1.4.2-pre`, see [docs/RELEASE.md](docs/RELEASE.md) §1b) —
+> Marketplace **pre-release** (tag `v1.4.3-pre`, see [docs/RELEASE.md](docs/RELEASE.md) §1b) —
 > opt in via Extensions view ▸ kubectl-control ▸ "Switch to Pre-Release Version". Contains the
 > 1.4.1 dev-round features below plus the security fixes and dependency updates listed here.
+>
+> `1.4.2` only ever existed as a GitHub beta build (`beta-v1.4.2`, dependency updates only) and
+> is superseded by this round; it was never published to the Marketplace.
 
 ### Security
 - **Credential plugins in kubeconfigs now need explicit approval.** A kubeconfig can declare
