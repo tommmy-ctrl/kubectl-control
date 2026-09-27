@@ -17,7 +17,7 @@ import { t } from './i18n';
  * command (edit, re-import, Gist pull) requires a new approval.
  */
 
-const MAX_SUMMARY_LEN = 300;
+const MAX_SUMMARY_LEN = 1000;
 
 export interface ExecEntry {
     kind: 'exec' | 'auth-provider' | 'unparseable';
@@ -29,19 +29,25 @@ export interface ExecAnalysis {
     entries: ExecEntry[];
     /** Undefined when the kubeconfig contains no credential plugin at all. */
     fingerprint?: string;
+    /**
+     * True if some mapping has keys that differ only in case (e.g. `Command` and
+     * `command`). Legitimate kubeconfigs never do this; it can only serve to make
+     * the approval dialog show something other than what kubectl runs.
+     */
+    ambiguous?: boolean;
 }
 
-// kubectl decodes kubeconfigs via YAML → JSON → encoding/json, which matches field
-// names case-insensitively ("Exec", "EXEC" are honoured). Match keys the same way.
+// DETECTION is deliberately broader than kubectl: `exec`/`auth-provider` keys are
+// matched case-insensitively anywhere in the document, so no casing or nesting
+// trick hides a plugin (a false positive only costs one confirmation).
 function keyIs(key: string, wanted: string): boolean {
     return key.toLowerCase() === wanted;
 }
 
-function getKey(obj: Record<string, unknown>, wanted: string): unknown {
-    for (const [k, v] of Object.entries(obj)) {
-        if (keyIs(k, wanted)) { return v; }
-    }
-    return undefined;
+// DISPLAY and FINGERPRINT identity must match exactly what kubectl executes.
+// client-go ≥ 1.23 decodes kubeconfigs case-sensitively, so read exact keys only.
+function exact(obj: Record<string, unknown>, key: string): unknown {
+    return Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined;
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -57,44 +63,70 @@ function stableStringify(v: unknown): string {
     return JSON.stringify(v) ?? 'null';
 }
 
+function hasCaseVariantKeys(node: unknown, depth = 0): boolean {
+    if (depth > 64) { return false; }
+    if (Array.isArray(node)) { return node.some(n => hasCaseVariantKeys(n, depth + 1)); }
+    if (!isObject(node)) { return false; }
+    const keys = Object.keys(node);
+    if (new Set(keys.map(k => k.toLowerCase())).size !== keys.length) { return true; }
+    return keys.some(k => hasCaseVariantKeys(node[k], depth + 1));
+}
+
+/** Makes control/bidi characters visible so they cannot fake extra lines in the dialog. */
+function visible(s: string): string {
+    return s.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,
+        c => `\\u{${c.codePointAt(0)!.toString(16)}}`);
+}
+
 function truncate(s: string): string {
-    return s.length > MAX_SUMMARY_LEN ? `${s.slice(0, MAX_SUMMARY_LEN)}…` : s;
+    return s.length > MAX_SUMMARY_LEN
+        ? `${s.slice(0, MAX_SUMMARY_LEN)}… ${t('(+{0} more characters)', s.length - MAX_SUMMARY_LEN)}`
+        : s;
+}
+
+function str(v: unknown): string {
+    return typeof v === 'string' ? v : stableStringify(v);
 }
 
 function summarizeExec(v: unknown): string {
-    if (!isObject(v)) { return truncate(stableStringify(v)); }
-    const command = getKey(v, 'command');
-    const args = getKey(v, 'args');
-    const parts = [typeof command === 'string' ? command : stableStringify(command)];
-    if (Array.isArray(args)) { parts.push(...args.map(a => (typeof a === 'string' ? a : stableStringify(a)))); }
-    return truncate(parts.join(' '));
+    if (!isObject(v)) { return truncate(visible(stableStringify(v))); }
+    const parts: string[] = [];
+    const env = exact(v, 'env');
+    if (Array.isArray(env)) {
+        for (const e of env) {
+            parts.push(isObject(e) ? `${str(exact(e, 'name'))}=${str(exact(e, 'value'))}` : str(e));
+        }
+    }
+    parts.push(str(exact(v, 'command')));
+    const args = exact(v, 'args');
+    if (Array.isArray(args)) { parts.push(...args.map(str)); }
+    return truncate(visible(parts.join(' ')));
 }
 
 function summarizeAuthProvider(v: unknown): string {
-    if (!isObject(v)) { return truncate(stableStringify(v)); }
-    const name = getKey(v, 'name');
-    const config = getKey(v, 'config');
-    const cmdPath = isObject(config) ? getKey(config, 'cmd-path') : undefined;
-    const cmdArgs = isObject(config) ? getKey(config, 'cmd-args') : undefined;
-    let s = `auth-provider: ${typeof name === 'string' ? name : stableStringify(name)}`;
-    if (typeof cmdPath === 'string') {
-        s += ` → ${cmdPath}${typeof cmdArgs === 'string' ? ` ${cmdArgs}` : ''}`;
+    if (!isObject(v)) { return truncate(visible(stableStringify(v))); }
+    const config = exact(v, 'config');
+    const cmdPath = isObject(config) ? exact(config, 'cmd-path') : undefined;
+    const cmdArgs = isObject(config) ? exact(config, 'cmd-args') : undefined;
+    let s = `auth-provider: ${str(exact(v, 'name'))}`;
+    if (cmdPath !== undefined) {
+        s += ` → ${str(cmdPath)}${cmdArgs !== undefined ? ` ${str(cmdArgs)}` : ''}`;
     }
-    return truncate(s);
+    return truncate(visible(s));
 }
 
 /**
  * Only the parts of an auth-provider that decide *what runs* go into the
  * fingerprint — its config also caches access tokens/expiry, which change on
- * refresh and must not invalidate an approval.
+ * refresh and must not invalidate an approval. Exact keys, as client-go reads them.
  */
 function authProviderIdentity(v: unknown): unknown {
     if (!isObject(v)) { return v; }
-    const config = getKey(v, 'config');
+    const config = exact(v, 'config');
     return {
-        name: getKey(v, 'name') ?? null,
-        cmdPath: isObject(config) ? getKey(config, 'cmd-path') ?? null : null,
-        cmdArgs: isObject(config) ? getKey(config, 'cmd-args') ?? null : null,
+        name: exact(v, 'name') ?? null,
+        cmdPath: isObject(config) ? exact(config, 'cmd-path') ?? null : null,
+        cmdArgs: isObject(config) ? exact(config, 'cmd-args') ?? null : null,
     };
 }
 
@@ -150,7 +182,7 @@ export function analyzeKubeconfig(kubeconfigData: string): ExecAnalysis {
         kind: f.kind,
         value: f.kind === 'exec' ? f.value : authProviderIdentity(f.value),
     }));
-    return { entries, fingerprint: `v1:${sha256(stableStringify(identity))}` };
+    return { entries, fingerprint: `v1:${sha256(stableStringify(identity))}`, ambiguous: hasCaseVariantKeys(doc) };
 }
 
 // ── Trust registry ────────────────────────────────────────────────────────────
@@ -202,6 +234,15 @@ export async function confirmKubeconfigExec(
     const analysis = analyzeKubeconfig(kubeconfigData);
     if (analysis.fingerprint === undefined) { return { ok: true }; }
     if (isApproved(analysis.fingerprint)) { return { ok: true, fingerprint: analysis.fingerprint }; }
+    if (analysis.ambiguous) {
+        // Cannot show reliably what would run — refuse instead of asking.
+        log.warn(`execTrust: refused ambiguous credential plugin for "${name}"`);
+        void vscode.window.showErrorMessage(
+            t('Connection "{0}" was blocked: its kubeconfig contains keys that differ only in upper/lower case (e.g. "Command" and "command"). Such a file can disguise which program kubectl would run. Please fix the kubeconfig.', name),
+            { modal: true },
+        );
+        return { ok: false };
+    }
 
     const list = analysis.entries.map(e => `• ${e.summary}`).join('\n');
     const btnAllow = t('Allow and continue');
