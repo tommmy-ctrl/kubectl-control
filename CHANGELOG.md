@@ -9,6 +9,19 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.4.2] – 2026-09-27
+
+> Marketplace **pre-release** (tag `v1.4.2-pre`, see [docs/RELEASE.md](docs/RELEASE.md) §1b) —
+> opt in via Extensions view ▸ kubectl-control ▸ "Switch to Pre-Release Version". Contains the
+> 1.4.1 dev-round features below plus dependency updates; no functional changes of its own.
+
+### Changed
+- **Dependency updates** (Dependabot): `js-yaml` 5.3.0 → 5.4.1 (#28), `uuid` 14.0.1 → 14.0.2
+  (#26); dev/transitive: `fast-uri` 3.1.5 → 3.1.7 (#29), `browserslist` 4.28.2 → 4.28.9 (#30),
+  `baseline-browser-mapping` 2.10.31 → 2.11.23 (#32).
+- Not included: the `dev-tooling` group (#27) — its TypeScript 7 bump conflicts with the
+  `@typescript-eslint` peer range (`<6.1.0`) and fails `npm ci`.
+
 ## [1.4.1] – 2026-08-27
 
 ### Added
