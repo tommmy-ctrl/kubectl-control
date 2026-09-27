@@ -5,6 +5,8 @@ import { ClusterStore, ClusterProfile } from '../store';
 import { createPersistentKubeconfig, isSafeContextName } from '../kubectlExec';
 import { ClusterTreeItem } from '../treeDataProvider';
 import { log } from '../logger';
+import { ensureClusterExecTrusted } from '../execTrust';
+import { registerGuardedCommand } from '../commandGuard';
 
 // ── Validation regexes ────────────────────────────────────────────────────────
 
@@ -150,7 +152,7 @@ export function registerPortForward(
     const manager = new PortForwardManager();
 
     // ── kubectl-control.startPortForward ──────────────────────────────────────
-    const startCmd = vscode.commands.registerCommand(
+    const startCmd = registerGuardedCommand(
         'kubectl-control.startPortForward',
         async (treeItem?: ClusterTreeItem) => {
             // Resolve cluster
@@ -161,6 +163,7 @@ export function registerPortForward(
                 cluster = await pickCluster(store);
             }
             if (!cluster) { return; }
+            if (!await ensureClusterExecTrusted(store, cluster)) { return; }
 
             // Prompt: resource
             const resourceInput = await vscode.window.showInputBox({

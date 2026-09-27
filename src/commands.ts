@@ -10,6 +10,8 @@ import { GistSyncService } from './gistSync';
 import { log } from './logger';
 import { fetchNamespaces, FALLBACK_NAMESPACES } from './features/namespaceBrowser';
 import { t, getLanguage } from './i18n';
+import { ensureUnlocked, registerGuardedCommand } from './commandGuard';
+import { ensureClusterExecTrusted } from './execTrust';
 
 export function registerCommands(
     context: vscode.ExtensionContext,
@@ -20,13 +22,7 @@ export function registerCommands(
     terminalManager: TerminalManager,
     gistSync: GistSyncService,
 ) {
-    const assertUnlocked = async (): Promise<boolean> => {
-        if (!await lockService.isEnabled()) { lockService.recordActivity(); return true; }
-        if (lockService.isUnlocked()) { lockService.recordActivity(); return true; }
-        await vscode.commands.executeCommand('kubectl-control.connectionsView.focus');
-        vscode.window.showWarningMessage(t('Kubectl Control is locked. Please unlock first.'));
-        return false;
-    };
+    const assertUnlocked = ensureUnlocked;
 
     const deleteClusterCmd = vscode.commands.registerCommand('kubectl-control.deleteCluster', async (item: ClusterTreeItem) => {
         if (!item) { return; }
@@ -89,7 +85,7 @@ export function registerCommands(
     // substring and filters the tree. Mirrors the filter back into the InputBox so it's
     // editable, and tracks kubectl-control.hasClusterFilter so the title bar can swap
     // between the "Filter" and "Clear Filter" icons (see package.json when-clauses).
-    const filterClustersCmd = vscode.commands.registerCommand('kubectl-control.filterClusters', async () => {
+    const filterClustersCmd = registerGuardedCommand('kubectl-control.filterClusters', async () => {
         const input = await vscode.window.showInputBox({
             title: t('Filter Clusters'),
             prompt: t('Filter by name, namespace, or group'),
@@ -101,7 +97,7 @@ export function registerCommands(
         await vscode.commands.executeCommand('setContext', 'kubectl-control.hasClusterFilter', treeProvider.getFilter() !== '');
     });
 
-    const clearClusterFilterCmd = vscode.commands.registerCommand('kubectl-control.clearClusterFilter', async () => {
+    const clearClusterFilterCmd = registerGuardedCommand('kubectl-control.clearClusterFilter', async () => {
         treeProvider.clearFilter();
         await vscode.commands.executeCommand('setContext', 'kubectl-control.hasClusterFilter', false);
     });
@@ -128,7 +124,7 @@ export function registerCommands(
         if (pick) { await terminalManager.openOrFocus(pick.cluster); }
     });
 
-    const showLogsCmd = vscode.commands.registerCommand('kubectl-control.showLogs', () => {
+    const showLogsCmd = registerGuardedCommand('kubectl-control.showLogs', () => {
         log.show();
     });
 
@@ -153,6 +149,8 @@ export function registerCommands(
 
         const cluster = clusterPick.cluster;
         const currentNs = cluster.namespace ?? 'default';
+        // Listing namespaces runs kubectl, i.e. the kubeconfig's credential plugin.
+        if (!await ensureClusterExecTrusted(store, cluster)) { return; }
 
         const liveNamespaces = await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: t('Loading namespaces…'), cancellable: false },
@@ -186,7 +184,7 @@ export function registerCommands(
         treeProvider.refresh();
     });
 
-    const togglePinCmd = vscode.commands.registerCommand('kubectl-control.togglePin', async (item: ClusterTreeItem) => {
+    const togglePinCmd = registerGuardedCommand('kubectl-control.togglePin', async (item: ClusterTreeItem) => {
         if (!item) { return; }
         const newPinned = !item.profile.pinned;
         await store.updateCluster(item.profile.id, { pinned: newPinned });
@@ -198,7 +196,7 @@ export function registerCommands(
         }
     });
 
-    const toggleProdCmd = vscode.commands.registerCommand('kubectl-control.toggleProd', async (item: ClusterTreeItem) => {
+    const toggleProdCmd = registerGuardedCommand('kubectl-control.toggleProd', async (item: ClusterTreeItem) => {
         if (!item) { return; }
         const newIsProd = !item.profile.isProd;
         await store.updateCluster(item.profile.id, { isProd: newIsProd });
@@ -273,6 +271,12 @@ export function registerCommands(
         });
         if (!pick) { return; }
 
+        // SECURITY: these actions read, export or replace connection data and must not
+        // work while locked (export used to hand out every kubeconfig without unlocking).
+        // 'reset' stays available as the forgotten-password escape hatch; it only deletes.
+        const needsUnlock = new Set(['export', 'import', 'import-kubeconfig', 'sync-setup', 'sync-now', 'sync-restore', 'sync-disable', 'logs']);
+        if (needsUnlock.has(pick.action) && !await assertUnlocked()) { return; }
+
         switch (pick.action) {
             case 'export':            await handleExport(store); break;
             case 'import':            await handleImport(store, treeProvider); break;
@@ -298,9 +302,9 @@ export function registerCommands(
         filterClustersCmd, clearClusterFilterCmd,
         quickSwitchCmd, showLogsCmd, settingsMenuCmd,
         switchNamespaceCmd, togglePinCmd, toggleProdCmd,
-        vscode.commands.registerCommand('kubectl-control.syncNow',     () => void gistSync.setupOrPush().catch(e => log.error(`syncNow failed: ${e}`))),
-        vscode.commands.registerCommand('kubectl-control.syncRestore', () => void gistSync.pull().catch(e => log.error(`syncRestore failed: ${e}`))),
-        vscode.commands.registerCommand('kubectl-control.syncDisable', () => void gistSync.disable().catch(e => log.error(`syncDisable failed: ${e}`))),
+        registerGuardedCommand('kubectl-control.syncNow',     () => void gistSync.setupOrPush().catch(e => log.error(`syncNow failed: ${e}`))),
+        registerGuardedCommand('kubectl-control.syncRestore', () => void gistSync.pull().catch(e => log.error(`syncRestore failed: ${e}`))),
+        registerGuardedCommand('kubectl-control.syncDisable', () => void gistSync.disable().catch(e => log.error(`syncDisable failed: ${e}`))),
     );
 }
 

@@ -5,6 +5,7 @@ import { ClusterProfile, ClusterStore, ShellType } from './store';
 import { log } from './logger';
 import { t } from './i18n';
 import { TEMP_DIR, ensureTempDir } from './kubectlExec';
+import { assertKubeconfigAllowed, ensureClusterExecTrusted } from './execTrust';
 
 // On Windows, prefer Git Bash if present; fall back to undefined (VS Code default shell) so the terminal still opens.
 function resolveShellPath(shell: ShellType): string | undefined {
@@ -252,6 +253,8 @@ export class TerminalManager implements vscode.Disposable {
 
     /** kubectl-availability check + production confirmation, shared by every path that opens a new terminal. */
     private async canOpenTerminal(profile: ClusterProfile): Promise<boolean> {
+        // SECURITY: kubectl in this terminal would run the kubeconfig's credential plugin.
+        if (!await ensureClusterExecTrusted(this.store, profile)) { return false; }
         if (!await this.isKubectlAvailable()) {
             const { openAnyway } = await this.showKubectlMissingWarning();
             if (!openAnyway) { return false; }
@@ -315,6 +318,8 @@ export class TerminalManager implements vscode.Disposable {
 
     private async openNew(profile: ClusterProfile): Promise<void> {
         try {
+            // SECURITY: defence in depth — canOpenTerminal() already asked for approval.
+            assertKubeconfigAllowed(profile.kubeconfigData);
             await ensureTempDir();
 
             const kubeconfigPath = this.tempFilePath(profile.id);

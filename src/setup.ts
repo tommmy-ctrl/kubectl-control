@@ -8,6 +8,7 @@ import { decryptData, isEncryptedFile } from './crypto';
 import { parseKubeconfig } from './kubeconfigParser';
 import { log } from './logger';
 import { t } from './i18n';
+import { analyzeKubeconfig } from './execTrust';
 
 export const SETUP_KEY = 'kubectl-control.setupDone';
 
@@ -144,6 +145,9 @@ export async function importFromLocalKubeconfig(
             kubeconfigData: minimalKubeconfigData,
             activeContext: ctx.name,
             namespace: ctx.namespace || 'default',
+            // The user's own ~/.kube/config: any credential plugin in it already runs on
+            // every plain `kubectl` call on this machine, so it counts as approved.
+            execTrust: analyzeKubeconfig(minimalKubeconfigData).fingerprint,
         });
         imported++;
     }

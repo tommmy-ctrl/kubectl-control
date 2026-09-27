@@ -14,6 +14,7 @@ import { registerPortForward } from './features/portForward';
 import { registerHelmBrowser } from './features/helmBrowser';
 import { registerRbacViewer } from './features/rbacViewer';
 import { t, refreshLanguage } from './i18n';
+import { initCommandGuard, isLocked } from './commandGuard';
 
 export function activate(context: vscode.ExtensionContext) {
     const extensionVersion = String(context.extension.packageJSON.version ?? 'unknown');
@@ -22,6 +23,7 @@ export function activate(context: vscode.ExtensionContext) {
     const store = new ClusterStore(context);
     const lockService = new LockService(context.secrets);
     void lockService.init(); // restore persisted brute-force counters
+    initCommandGuard(lockService); // must run before anything that checks the lock
     const autoLockMinutes = vscode.workspace.getConfiguration('kubectl-control').get<number>('autoLockMinutes', 0);
     lockService.setAutoLock(autoLockMinutes);
     context.subscriptions.push(
@@ -45,7 +47,11 @@ export function activate(context: vscode.ExtensionContext) {
     const terminalManager = new TerminalManager(store);
     terminalManager.cleanupOrphanedTempFiles().catch(e => log.warn('Temp cleanup on startup failed', e));
     const gistSync = new GistSyncService(store, context.secrets, context.globalState);
-    const clusterStatusService = new ClusterStatusService(store, terminalManager);
+    const clusterStatusService = new ClusterStatusService(store, terminalManager, isLocked);
+    // Background status checks are skipped while locked — catch up right after unlocking.
+    context.subscriptions.push(lockService.onStateChange(() => {
+        if (lockService.isUnlocked()) { void clusterStatusService.checkAll(); }
+    }));
     const treeProvider = new ClusterTreeDataProvider(store, terminalManager, lockService, clusterStatusService);
     const connectionsViewProvider = new ConnectionsViewProvider(
         context.extensionUri, store, lockService, () => treeProvider.refresh(), extensionVersion

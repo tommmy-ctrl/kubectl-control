@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { v4 as uuidv4 } from 'uuid';
 import { log } from './logger';
 import { t } from './i18n';
+import { analyzeKubeconfig, syncApprovedFingerprints } from './execTrust';
 
 export type ShellType = 'default' | 'bash' | 'zsh' | 'powershell' | 'cmd';
 
@@ -10,7 +11,7 @@ const CONTEXT_REGEX = /^[a-zA-Z0-9._-]+$/;
 const MAX_STRING_LEN = 200;
 
 /** Current schema version written to SecretStorage. */
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
 
 export interface ClusterProfile {
     id: string;
@@ -25,6 +26,12 @@ export interface ClusterProfile {
     isProd?: boolean;
     /** Optional per-connection prompt colour as a #rrggbb hex string. */
     promptColor?: string;
+    /**
+     * SECURITY: fingerprint of the kubeconfig's credential plugin (exec/auth-provider)
+     * that the user approved on THIS machine (see execTrust.ts). Never exported,
+     * never accepted from an import or Gist sync.
+     */
+    execTrust?: string;
 }
 
 /** On-disk envelope wrapping the cluster array with a schema version. */
@@ -41,6 +48,8 @@ export interface AddClusterOptions {
     namespace?: string;
     activeContext?: string;
     promptColor?: string;
+    /** Approved credential-plugin fingerprint (see execTrust.ts). */
+    execTrust?: string;
 }
 
 /** Matches a #rrggbb hex colour (the only format accepted for prompt colours). */
@@ -82,31 +91,47 @@ function sanitizeImportedCluster(cluster: ClusterProfile): ClusterProfile | null
         }
     }
 
-    return { ...cluster, name, group, activeContext, shell, promptColor };
+    // SECURITY: an import can never carry a plugin approval — strip it.
+    const { execTrust: _ignored, ...rest } = cluster;
+    return { ...rest, name, group, activeContext, shell, promptColor };
 }
 
 /**
  * Migrates a raw parsed value from SecretStorage to a ClusterProfile array.
  * Supports:
  *   - version 0 (legacy): bare ClusterProfile[]
- *   - version 1+: StoredEnvelope { schemaVersion, clusters }
- * Add future migration steps here as new `case` blocks.
+ *   - version 1: StoredEnvelope { schemaVersion, clusters }
+ *   - version 2: adds `execTrust` (approved credential-plugin fingerprint)
+ * Add future migration steps here in order.
+ *
+ * @returns the clusters and whether anything was migrated (caller persists).
  */
-function migrate(rawParsed: unknown): ClusterProfile[] {
-    // Legacy format: bare array (schema version 0)
+function migrate(rawParsed: unknown): { clusters: ClusterProfile[]; migrated: boolean } {
+    let clusters: ClusterProfile[];
+    let version: number;
     if (Array.isArray(rawParsed)) {
-        log.info('store: migrating legacy bare-array storage to schema version 1');
-        return rawParsed as ClusterProfile[];
+        // Legacy format: bare array (schema version 0)
+        clusters = rawParsed as ClusterProfile[];
+        version = 0;
+    } else {
+        const envelope = rawParsed as StoredEnvelope;
+        clusters = envelope.clusters ?? [];
+        version = typeof envelope.schemaVersion === 'number' ? envelope.schemaVersion : 1;
     }
 
-    // Envelope format
-    const envelope = rawParsed as StoredEnvelope;
-    let clusters = envelope.clusters ?? [];
+    if (version < 2) {
+        // v1 → v2: connections configured before the credential-plugin check existed
+        // keep working unchanged — their plugins already ran on every status check,
+        // so approving them here adds no new exposure. Only clusters added, edited,
+        // imported or synced from now on need an explicit approval.
+        clusters = clusters.map(c => {
+            const { fingerprint } = analyzeKubeconfig(c.kubeconfigData ?? '');
+            return fingerprint ? { ...c, execTrust: fingerprint } : c;
+        });
+        log.info(`store: migrated schema version ${version} → ${CURRENT_SCHEMA_VERSION}`);
+    }
 
-    // Future migrations: switch on envelope.schemaVersion and apply transforms in order.
-    // Currently only version 1 exists so nothing extra to do.
-
-    return clusters;
+    return { clusters, migrated: version < CURRENT_SCHEMA_VERSION };
 }
 
 export class ClusterStore {
@@ -124,12 +149,20 @@ export class ClusterStore {
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
+    // In-flight first load, shared by concurrent callers so the schema migration
+    // (which persists) runs once and cannot race a queued save.
+    private _loading: Promise<ClusterProfile[]> | undefined = undefined;
+
     public async getClusters(): Promise<ClusterProfile[]> {
         // Serve from cache if already populated.
         if (this._cache !== undefined) {
             return this._cache;
         }
+        this._loading ??= this.load().finally(() => { this._loading = undefined; });
+        return this._loading;
+    }
 
+    private async load(): Promise<ClusterProfile[]> {
         const data = await this.context.secrets.get(ClusterStore.storageKey);
         if (!data) {
             this._cache = [];
@@ -137,7 +170,16 @@ export class ClusterStore {
         }
         try {
             const rawParsed: unknown = JSON.parse(data);
-            const clusters = migrate(rawParsed);
+            const { clusters, migrated } = migrate(rawParsed);
+            if (migrated) {
+                // Persist right away (before the cache is visible to any writer) so the
+                // migration and its approvals run exactly once — clusters imported later
+                // must not be approved by a re-run. A failed write only means it re-runs.
+                const envelope: StoredEnvelope = { schemaVersion: CURRENT_SCHEMA_VERSION, clusters };
+                await this.context.secrets.store(ClusterStore.storageKey, JSON.stringify(envelope))
+                    .then(undefined, e => log.warn('store: could not persist schema migration', e));
+            }
+            syncApprovedFingerprints(clusters);
             this._cache = clusters;
             return this._cache;
         } catch (e) {
@@ -160,6 +202,7 @@ export class ClusterStore {
                 namespace: opts.namespace,
                 activeContext: opts.activeContext,
                 promptColor: opts.promptColor && PROMPT_COLOR_REGEX.test(opts.promptColor) ? opts.promptColor : undefined,
+                execTrust: opts.execTrust,
             };
             clusters.push(profile);
             await this.save(clusters);
@@ -205,11 +248,13 @@ export class ClusterStore {
 
     public async exportClusters(): Promise<string> {
         const clusters = await this.getClusters();
-        return JSON.stringify(clusters, null, 2);
+        // Approvals are machine-local and never leave this machine.
+        return JSON.stringify(clusters.map(({ execTrust: _ignored, ...rest }) => rest), null, 2);
     }
 
     public async clearAll(): Promise<void> {
         this._cache = [];
+        syncApprovedFingerprints([]);
         await this.context.secrets.delete(ClusterStore.storageKey);
         this._onDidChange.fire();
         log.info('All clusters cleared');
@@ -230,7 +275,9 @@ export class ClusterStore {
 
                 if (existingIds.has(cluster.id)) {
                     const idx = merged.findIndex(c => c.id === cluster.id);
-                    merged[idx] = sanitized;
+                    // Keep this machine's approval: it is a fingerprint of the plugin
+                    // command, so a changed command is still blocked until re-approved.
+                    merged[idx] = { ...sanitized, execTrust: merged[idx].execTrust };
                 } else {
                     merged.push({ ...sanitized, id: uuidv4() });
                     added++;
@@ -253,6 +300,7 @@ export class ClusterStore {
             clusters,
         };
         await this.context.secrets.store(ClusterStore.storageKey, JSON.stringify(envelope));
+        syncApprovedFingerprints(clusters);
         // Update cache so subsequent getClusters() calls see the committed state.
         this._cache = clusters;
         this._onDidChange.fire();

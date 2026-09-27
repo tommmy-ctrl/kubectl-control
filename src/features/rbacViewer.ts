@@ -5,6 +5,8 @@ import { execWithKubeconfig } from '../kubectlExec';
 import { ClusterTreeItem } from '../treeDataProvider';
 import { log } from '../logger';
 import { t } from '../i18n';
+import { ensureClusterExecTrusted } from '../execTrust';
+import { registerGuardedCommand } from '../commandGuard';
 
 // ── Validation helpers ────────────────────────────────────────────────────────
 
@@ -204,6 +206,7 @@ async function runAuthCanI(
         profile = await pickCluster(store);
     }
     if (!profile) { return; }
+    if (!await ensureClusterExecTrusted(store, profile)) { return; }
 
     const defaultNs = profile.namespace || 'default';
     const namespace = await pickNamespace(defaultNs);
@@ -277,6 +280,7 @@ async function runAuthCanIVerb(
         profile = await pickCluster(store);
     }
     if (!profile) { return; }
+    if (!await ensureClusterExecTrusted(store, profile)) { return; }
 
     const verb = await vscode.window.showInputBox({
         title: t('Verb (e.g. get, list, delete)'),
@@ -338,12 +342,12 @@ export function registerRbacViewer(
     // Track open webview panels so we can reuse/refresh them
     const webviewPanels = new Map<string, vscode.WebviewPanel>();
 
-    const canIDisposable = vscode.commands.registerCommand(
+    const canIDisposable = registerGuardedCommand(
         'kubectl-control.authCanI',
         (treeItem?: ClusterTreeItem) => runAuthCanI(store, webviewPanels, treeItem),
     );
 
-    const canIVerbDisposable = vscode.commands.registerCommand(
+    const canIVerbDisposable = registerGuardedCommand(
         'kubectl-control.authCanIVerb',
         (treeItem?: ClusterTreeItem) => runAuthCanIVerb(store, treeItem),
     );

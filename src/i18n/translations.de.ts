@@ -282,4 +282,15 @@ export const de: Record<string, string> = {
     'Save Changes': 'Änderungen speichern',
     'Invalid kubeconfig': 'Ungültiges kubeconfig',
     '{0} context{1} detected': '{0} Context{1} erkannt',
+
+    // ── execTrust.ts ─────────────────────────────────────────────────────────
+    '(kubeconfig could not be analyzed)': '(kubeconfig konnte nicht analysiert werden)',
+    'This kubeconfig uses a credential plugin (exec/auth-provider) that has not been approved yet. Open a terminal for this connection to review and approve it.': 'Diese kubeconfig verwendet ein Credential-Plugin (exec/auth-provider), das noch nicht freigegeben wurde. Öffne ein Terminal für diese Verbindung, um es zu prüfen und freizugeben.',
+    'Allow and continue': 'Erlauben und fortfahren',
+    'Connection "{0}" runs a program on this computer': 'Verbindung "{0}" führt ein Programm auf diesem Computer aus',
+    'This kubeconfig contains a credential plugin. kubectl will execute the following on your machine every time it connects:\n\n{0}\n\nOnly allow this if you trust where this kubeconfig came from.': 'Diese kubeconfig enthält ein Credential-Plugin. kubectl führt bei jeder Verbindung Folgendes auf deinem Rechner aus:\n\n{0}\n\nErlaube das nur, wenn du der Herkunft dieser kubeconfig vertraust.',
+    // ── treeDataProvider.ts (execTrust) ──────────────────────────────────────
+    '\n🛡️ Uses a credential plugin that has not been approved yet — open a terminal to review and approve it. Status checks are paused until then.\n': '\n🛡️ Verwendet ein noch nicht freigegebenes Credential-Plugin — Terminal öffnen, um es zu prüfen und freizugeben. Status-Checks pausieren bis dahin.\n',
+    '(+{0} more characters)': '(+{0} weitere Zeichen)',
+    'Connection "{0}" was blocked: its kubeconfig contains keys that differ only in upper/lower case (e.g. "Command" and "command"). Such a file can disguise which program kubectl would run. Please fix the kubeconfig.': 'Verbindung "{0}" wurde blockiert: Ihre kubeconfig enthält Schlüssel, die sich nur in Groß-/Kleinschreibung unterscheiden (z. B. "Command" und "command"). So eine Datei kann verschleiern, welches Programm kubectl ausführt. Bitte die kubeconfig korrigieren.',
 };

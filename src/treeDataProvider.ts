@@ -56,6 +56,8 @@ export class ClusterTreeItem extends vscode.TreeItem {
             desc += ' 🔴';
         } else if (status === 'unauthorized') {
             desc += ' 🟡';
+        } else if (status === 'untrusted') {
+            desc += ' 🛡️';
         }
         this.description = desc;
 
@@ -68,6 +70,7 @@ export class ClusterTreeItem extends vscode.TreeItem {
             (profile.isProd ? t('\n⚠️ Production environment — changes take effect immediately\n') : '') +
             (status === 'unreachable' ? t('\n⚠️ Cluster unreachable\n') : '') +
             (status === 'unauthorized' ? t('\n⚠️ Token expired or invalid — not authenticated. Re-import kubeconfig.\n') : '') +
+            (status === 'untrusted' ? t('\n🛡️ Uses a credential plugin that has not been approved yet — open a terminal to review and approve it. Status checks are paused until then.\n') : '') +
             (terminalCount > 1 ? t('\n_{0} terminals are open_', terminalCount)
                 : hasTerminal ? t('\n_Terminal is open_') : '');
         this.tooltip = new vscode.MarkdownString(tooltipLines);
