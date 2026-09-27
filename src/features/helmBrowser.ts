@@ -4,6 +4,8 @@ import { ClusterStore, ClusterProfile } from '../store';
 import { execWithKubeconfig } from '../kubectlExec';
 import { ClusterTreeItem } from '../treeDataProvider';
 import { log } from '../logger';
+import { ensureClusterExecTrusted } from '../execTrust';
+import { ensureUnlocked, registerGuardedCommand } from '../commandGuard';
 
 // ── Validation helpers ────────────────────────────────────────────────────────
 
@@ -192,6 +194,7 @@ async function runHelmList(
         cluster = await pickCluster(store);
     }
     if (!cluster) { return; }
+    if (!await ensureClusterExecTrusted(store, cluster)) { return; }
 
     const panelKey = `helmList:${cluster.id}`;
     const existingPanel = panels.get(panelKey);
@@ -211,6 +214,8 @@ async function runHelmList(
     panel.onDidDispose(() => panels.delete(panelKey));
 
     panel.webview.onDidReceiveMessage(async msg => {
+        // SECURITY: an open panel must not keep working after the extension was locked.
+        if (!await ensureUnlocked()) { return; }
         if (msg.command === 'refresh') {
             await refreshHelmList(cluster!, panel);
         }
@@ -283,6 +288,7 @@ async function runHelmHistory(
         cluster = await pickCluster(store);
     }
     if (!cluster) { return; }
+    if (!await ensureClusterExecTrusted(store, cluster)) { return; }
 
     // Step 2: fetch release list to offer as QuickPick
     let releases: HelmRelease[] = [];
@@ -376,6 +382,8 @@ async function runHelmHistory(
     panel.onDidDispose(() => panels.delete(panelKey));
 
     panel.webview.onDidReceiveMessage(async msg => {
+        // SECURITY: an open panel must not keep working after the extension was locked.
+        if (!await ensureUnlocked()) { return; }
         if (msg.command === 'refresh') {
             await refreshHelmHistory(cluster!, releaseName, releaseNamespace, panel);
         }
@@ -468,12 +476,12 @@ export function registerHelmBrowser(
     // Shared panel registry keyed by panelKey string
     const panels = new Map<string, vscode.WebviewPanel>();
 
-    const listCmd = vscode.commands.registerCommand(
+    const listCmd = registerGuardedCommand(
         'kubectl-control.helmList',
         (arg?: unknown) => runHelmList(store, panels, arg),
     );
 
-    const historyCmd = vscode.commands.registerCommand(
+    const historyCmd = registerGuardedCommand(
         'kubectl-control.helmHistory',
         (arg?: unknown) => runHelmHistory(store, panels, arg),
     );

@@ -13,7 +13,31 @@ published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in
 
 > Marketplace **pre-release** (tag `v1.4.2-pre`, see [docs/RELEASE.md](docs/RELEASE.md) §1b) —
 > opt in via Extensions view ▸ kubectl-control ▸ "Switch to Pre-Release Version". Contains the
-> 1.4.1 dev-round features below plus dependency updates; no functional changes of its own.
+> 1.4.1 dev-round features below plus the security fixes and dependency updates listed here.
+
+### Security
+- **Credential plugins in kubeconfigs now need explicit approval.** A kubeconfig can declare
+  `users[].user.exec` or a legacy `auth-provider` (`cmd-path`); kubectl runs those programs on
+  your machine whenever it connects. Previously an imported file or a Gist pull could run such a
+  program without any user action — the background status check called kubectl for every
+  cluster on startup and every 60 s. Now the exact command is shown in a confirmation dialog the
+  first time a connection needs it (opening a terminal, pods/helm/RBAC/port-forward, namespace
+  switch, the connection test when adding or editing). Unapproved connections show 🛡️ in the tree
+  and are skipped by status checks. Approvals are a fingerprint of the plugin command, stored
+  per machine: they are never exported or synced, and any change to the command asks again.
+  **Existing connections are approved automatically on update** (their plugins already ran
+  before), and contexts imported from your own `~/.kube/config` count as approved.
+  ([src/execTrust.ts](src/execTrust.ts), [src/kubectlExec.ts](src/kubectlExec.ts))
+- **The password lock now covers every action.** Pods/deployments, Helm, RBAC, port-forward,
+  pin/production toggles, cluster filter, debug logs and all GitHub Sync commands previously
+  worked while locked — and so did **export, import and sync from the settings menu (⚙)**,
+  which let anyone export all kubeconfigs without the password. All of them now require
+  unlocking; open resource panels and a connection form left open before auto-lock stop
+  responding too. Background status checks pause while locked and resume on unlock.
+  "Reset Application" stays available as the forgotten-password fallback.
+  ([src/commandGuard.ts](src/commandGuard.ts))
+- Storage schema version 2 (adds the per-connection approval). Migration is automatic and
+  one-time; older versions can still read the new format.
 
 ### Changed
 - **Dependency updates** (Dependabot): `js-yaml` 5.3.0 → 5.4.1 (#28), `uuid` 14.0.1 → 14.0.2

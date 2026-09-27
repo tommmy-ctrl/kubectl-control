@@ -4,8 +4,9 @@ import { TerminalManager } from './terminalManager';
 import { log } from './logger';
 import { execWithKubeconfig } from './kubectlExec';
 import { t } from './i18n';
+import { isKubeconfigAllowed } from './execTrust';
 
-export type ClusterStatus = 'reachable' | 'unreachable' | 'unauthorized' | 'unknown';
+export type ClusterStatus = 'reachable' | 'unreachable' | 'unauthorized' | 'untrusted' | 'unknown';
 
 /** After this many consecutive unreachable checks, backoff kicks in. */
 const BACKOFF_THRESHOLD = 3;
@@ -79,9 +80,17 @@ export class ClusterStatusService implements vscode.Disposable {
      */
     private readonly _authNotified = new Set<string>();
 
+    private readonly _storeSub: vscode.Disposable;
+
+    /**
+     * @param isLocked SECURITY: background checks run kubectl (and with it any
+     *        credential plugin) without user interaction, so they are skipped
+     *        entirely while the extension is locked.
+     */
     constructor(
         private readonly store: ClusterStore,
         private readonly terminalManager: TerminalManager,
+        private readonly isLocked: () => Promise<boolean> = async () => false,
     ) {
         const intervalSeconds = this._readIntervalSetting();
 
@@ -94,6 +103,11 @@ export class ClusterStatusService implements vscode.Disposable {
                 this.checkAll().catch(() => undefined);
             }, intervalSeconds * 1000);
         }
+
+        // A cluster whose credential plugin was just approved should not wait for the next tick.
+        this._storeSub = store.onDidChange(() => {
+            void this._recheckNewlyApproved();
+        });
 
         // Re-apply interval if the setting changes at runtime
         vscode.workspace.onDidChangeConfiguration(e => {
@@ -130,6 +144,7 @@ export class ClusterStatusService implements vscode.Disposable {
     }
 
     async checkAll(): Promise<void> {
+        if (await this.isLocked()) { return; }
         const clusters = await this.store.getClusters();
         await Promise.all(clusters.map(c => this._maybeCheckOne(c.id, c.kubeconfigData, c.activeContext, c.name ?? c.id)));
     }
@@ -149,7 +164,24 @@ export class ClusterStatusService implements vscode.Disposable {
         return this._tickCount % multiplier !== 0;
     }
 
+    private async _recheckNewlyApproved(): Promise<void> {
+        const pending = [...this._statuses].filter(([, s]) => s === 'untrusted').map(([id]) => id);
+        if (pending.length === 0 || await this.isLocked()) { return; }
+        const clusters = await this.store.getClusters();
+        await Promise.all(clusters
+            .filter(c => pending.includes(c.id) && isKubeconfigAllowed(c.kubeconfigData))
+            .map(c => this.checkOne(c.id, c.kubeconfigData, c.activeContext, c.name ?? c.id)));
+    }
+
     private async _maybeCheckOne(id: string, kubeconfigData: string, context?: string, name?: string): Promise<void> {
+        // SECURITY: never run an unapproved credential plugin from a background check.
+        if (!isKubeconfigAllowed(kubeconfigData)) {
+            if (this._statuses.get(id) !== 'untrusted') {
+                this._statuses.set(id, 'untrusted');
+                this._onDidChange.fire();
+            }
+            return;
+        }
         if (this._shouldSkipForBackoff(id)) {
             return;
         }
@@ -257,6 +289,7 @@ export class ClusterStatusService implements vscode.Disposable {
 
     dispose(): void {
         if (this._timer) { clearInterval(this._timer); }
+        this._storeSub.dispose();
         this._onDidChange.dispose();
     }
 }

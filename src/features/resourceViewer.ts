@@ -5,6 +5,8 @@ import { ClusterTreeItem } from '../treeDataProvider';
 import { execWithKubeconfig, createPersistentKubeconfig, isSafeContextName } from '../kubectlExec';
 import { log } from '../logger';
 import { t } from '../i18n';
+import { ensureClusterExecTrusted } from '../execTrust';
+import { ensureUnlocked, registerGuardedCommand } from '../commandGuard';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -378,6 +380,7 @@ async function runResourceCommand(
         cluster = await pickCluster(store);
     }
     if (!cluster) { return; }
+    if (!await ensureClusterExecTrusted(store, cluster)) { return; }
 
     // 2. Resolve namespace
     const namespaceRaw = await pickNamespace(cluster);
@@ -439,6 +442,8 @@ async function runResourceCommand(
 
     // 5. Handle refresh / logs messages
     panel.webview.onDidReceiveMessage(async (message: { command: string; pod?: string }) => {
+        // SECURITY: an open panel must not keep working after the extension was locked.
+        if (!await ensureUnlocked()) { return; }
         if (message.command === 'refresh') {
             await fetch();
         } else if (message.command === 'logs' && message.pod) {
@@ -461,14 +466,14 @@ export function registerResourceViewer(
     context: vscode.ExtensionContext,
     store: ClusterStore,
 ): vscode.Disposable[] {
-    const listPods = vscode.commands.registerCommand(
+    const listPods = registerGuardedCommand(
         'kubectl-control.listPods',
         async (treeItem?: ClusterTreeItem) => {
             await runResourceCommand('pods', treeItem, store);
         },
     );
 
-    const listDeployments = vscode.commands.registerCommand(
+    const listDeployments = registerGuardedCommand(
         'kubectl-control.listDeployments',
         async (treeItem?: ClusterTreeItem) => {
             await runResourceCommand('deployments', treeItem, store);

@@ -8,6 +8,8 @@ import { execWithKubeconfig } from './kubectlExec';
 import { log } from './logger';
 import { welcomeHtml, lockHtml, formHtml } from './webviews/templates';
 import { t, getLanguage } from './i18n';
+import { confirmKubeconfigExec } from './execTrust';
+import { isLocked } from './commandGuard';
 
 export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'kubectl-control.connectionsView';
@@ -39,6 +41,11 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
 
         this._messageHandlerDisposable?.dispose();
         this._messageHandlerDisposable = webviewView.webview.onDidReceiveMessage(async message => {
+            // SECURITY: while locked only the unlock form may talk to the extension —
+            // a stale form (rendered before auto-lock) must not add/edit/read connections.
+            const lockSafe = message.command === 'unlock'
+                || (this._welcomeMode && String(message.command ?? '').startsWith('setup'));
+            if (!lockSafe && await isLocked()) { return; }
             switch (message.command) {
                 case 'unlock':           await this.handleUnlock(message.password); break;
                 case 'addCluster':       await this.addCluster(message); break;
@@ -136,6 +143,9 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         const parsed = parseKubeconfig(kubeconfigData);
         const namespace = getActiveNamespace(parsed);
         const ctx = msg.activeContext || parsed.currentContext || undefined;
+        // SECURITY: the connection test runs kubectl → show any credential plugin first.
+        const trust = await confirmKubeconfigExec(name, kubeconfigData);
+        if (!trust.ok) { return; }
         const err = await this.testConnection(kubeconfigData, ctx);
         if (err !== null) {
             const btnSave = t('Save anyway');
@@ -154,6 +164,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
             namespace,
             activeContext: ctx,
             promptColor: (msg.promptColor ?? '').trim() || undefined,
+            execTrust: trust.fingerprint,
         });
         log.info(`Cluster added via form: "${name}"`);
         this.onChanged();
@@ -171,6 +182,9 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         const parsed = parseKubeconfig(kubeconfigData);
         const namespace = getActiveNamespace(parsed);
         const ctx = msg.activeContext || parsed.currentContext || undefined;
+        // SECURITY: the connection test runs kubectl → show any credential plugin first.
+        const trust = await confirmKubeconfigExec(name, kubeconfigData);
+        if (!trust.ok) { return; }
         const err = await this.testConnection(kubeconfigData, ctx);
         if (err !== null) {
             const btnSave = t('Save anyway');
@@ -189,6 +203,7 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
             namespace,
             activeContext: ctx,
             promptColor: (msg.promptColor ?? '').trim() || undefined,
+            execTrust: trust.fingerprint,
         });
         log.info(`Cluster updated via form: "${name}"`);
         this.onChanged();

@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { v4 as uuidv4 } from 'uuid';
+import { assertKubeconfigAllowed } from './execTrust';
 
 const execFileAsync = promisify(execFile);
 
@@ -40,7 +41,9 @@ export function ensureTempDir(): Promise<void> {
  * @param timeoutMs      - process timeout in milliseconds (default 5000)
  * @param binary         - binary to invoke (default 'kubectl'; e.g. 'helm')
  * @returns stdout and stderr
- * @throws if context contains invalid characters, or if the process exits non-zero
+ * @throws if context contains invalid characters, if the kubeconfig contains a
+ *         credential plugin that has not been approved (ExecNotApprovedError),
+ *         or if the process exits non-zero
  */
 export async function execWithKubeconfig(
     kubeconfigData: string,
@@ -55,6 +58,8 @@ export async function execWithKubeconfig(
             throw new Error(`Unsafe kubectl context name: "${context}"`);
         }
     }
+    // SECURITY: never hand an unapproved exec/auth-provider plugin to kubectl.
+    assertKubeconfigAllowed(kubeconfigData);
 
     await ensureTempDir();
 
@@ -95,6 +100,8 @@ export function isSafeContextName(context: string): boolean {
 export async function createPersistentKubeconfig(
     kubeconfigData: string,
 ): Promise<{ path: string; cleanup: () => Promise<void> }> {
+    // SECURITY: never hand an unapproved exec/auth-provider plugin to kubectl.
+    assertKubeconfigAllowed(kubeconfigData);
     await ensureTempDir();
     const tempFile = path.join(TEMP_DIR, `kubeconfig-pf-${uuidv4()}.yaml`);
     await fs.writeFile(tempFile, kubeconfigData, { encoding: 'utf-8', mode: 0o600 });
