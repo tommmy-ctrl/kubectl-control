@@ -162,23 +162,56 @@ git push origin v1.5.0      # triggers release.yml
 
 ---
 
-## 3. Required Secrets
+## 3. Required Secrets and Variables
 
-| Secret | Purpose | Workflow |
-|--------|---------|----------|
-| `VSCE_PAT` | Marketplace publish (`vsce publish`) — stable **and** `-pre` tags | `release.yml` |
-| `RELEASE_PAT` | Tag push that triggers `release.yml` (optional) | `promote.yml` |
+| Name | Kind | Purpose | Workflow |
+|------|------|---------|----------|
+| `AZURE_CLIENT_ID` | Environment variable (`marketplace`) | Entra app used to publish (not a secret) | `release.yml`, `marketplace-identity.yml` |
+| `AZURE_TENANT_ID` | Environment variable (`marketplace`) | Entra tenant (not a secret) | `release.yml`, `marketplace-identity.yml` |
+| `RELEASE_PAT` | Secret | Tag push that triggers `release.yml` (optional) | `promote.yml` |
+
+**Marketplace publishing uses no stored secret.** `release.yml` logs in to Microsoft Entra ID with
+GitHub's short-lived OIDC token (workload identity federation) and publishes with
+`vsce publish --azure-credential` — for stable (`vX.Y.0`) and pre-release (`vX.Y.Z-pre`) tags
+alike. Nothing can expire or leak the way the former `VSCE_PAT` did (Azure DevOps retires global
+PATs on 2026-12-01). One-time setup: section 3a.
 
 `GITHUB_TOKEN` (automatic) is sufficient for GitHub Releases and asset uploads. `beta-release.yml`
-only runs `vsce package` (a local build, no Marketplace interaction) and therefore needs neither
-secret — the GitHub-only beta channel never touches the Marketplace, see the note in section 1
-above. `release.yml` uses the same `VSCE_PAT` for both stable (`vX.Y.0`) and pre-release
-(`vX.Y.Z-pre`) tags — see section 1b.
+only runs `vsce package` (a local build, no Marketplace interaction) and needs no credentials.
 
 > **`RELEASE_PAT`:** Only needed if you want the Promote workflow to run fully automatically
-> through to the Marketplace publish. Without it: `promote.yml` merges and tags, but
-> `release.yml` must then be started manually via "Run workflow". `VSCE_PAT` is already
-> present and covers both channels.
+> through to the Marketplace publish. Without it: `promote.yml` merges and tags, but the tag
+> push made with `GITHUB_TOKEN` does not trigger `release.yml`.
+
+### 3a. One-time setup: Marketplace publishing via Entra ID (OIDC)
+
+1. **GitHub environment.** Repo ▸ Settings ▸ Environments ▸ **New environment** `marketplace`.
+   Under *Deployment branches and tags* choose **Selected branches and tags** and add the tag
+   rule `v*` plus the branch `beta` (only for running the one-time identity workflow in step 5).
+2. **Entra app registration.** [portal.azure.com](https://portal.azure.com) ▸ Microsoft Entra ID ▸
+   App registrations ▸ **New registration** (name e.g. `kubectl-control-marketplace`, single
+   tenant, no redirect URI). No Azure subscription is needed. Note the *Application (client) ID*
+   and *Directory (tenant) ID*.
+3. **Federated credential.** In the app: Certificates & secrets ▸ Federated credentials ▸
+   **Add credential** ▸ scenario *GitHub Actions deploying Azure resources*:
+   Organization `tommmy-ctrl`, Repository `kubectl-control`, Entity type **Environment**,
+   Environment name `marketplace`. (Resulting subject:
+   `repo:tommmy-ctrl/kubectl-control:environment:marketplace`, audience
+   `api://AzureADTokenExchange`.) Do **not** create a client secret.
+4. **GitHub variables.** In the `marketplace` environment add the *variables* (not secrets)
+   `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` with the values from step 2.
+5. **Get the Marketplace member ID.** Actions ▸ **Marketplace identity (one-time setup)** ▸
+   Run workflow on `beta`. It creates the identity's Azure DevOps profile and prints its ID in
+   the run summary.
+6. **Add the identity to the publisher.** [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage)
+   ▸ publisher `tommmy-ctrl` ▸ **Members** ▸ Add ▸ paste the ID from step 5 ▸ role
+   **Contributor** (may publish updates; cannot manage the publisher).
+7. **Remove the old secret.** Delete the repo secret `VSCE_PAT` and revoke the PAT in Azure
+   DevOps (User settings ▸ Personal access tokens).
+
+From then on, a `vX.Y.0` / `vX.Y.Z-pre` tag publishes without any stored credential. Because the
+federated credential trusts only the `marketplace` environment and the environment only admits
+`v*` tags (and `beta` for step 5), no other branch or pull request can obtain a publishing token.
 
 ---
 

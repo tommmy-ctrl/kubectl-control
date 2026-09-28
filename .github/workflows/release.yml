@@ -17,8 +17,15 @@ jobs:
     # below is an extra safety net against any other unexpected hyphenated tag.
     if: ${{ !contains(github.ref_name, '-') || endsWith(github.ref_name, '-pre') }}
 
+    # Marketplace publishing authenticates via Microsoft Entra ID (OIDC workload
+    # identity federation) — no long-lived PAT. The Entra federated credential
+    # trusts exactly this environment, and the environment only admits `v*` tags
+    # (Settings ▸ Environments ▸ marketplace). See docs/RELEASE.md §3a.
+    environment: marketplace
+
     permissions:
       contents: write   # needed to upload release assets
+      id-token: write   # GitHub OIDC token for the Entra ID login below
 
     steps:
       - name: Checkout
@@ -104,12 +111,19 @@ jobs:
           body_path: ${{ steps.notes.outputs.found == 'true' && 'RELEASE_NOTES.md' || '' }}
           generate_release_notes: ${{ steps.notes.outputs.found != 'true' }}
 
+      - name: Azure login (Entra ID via OIDC, no subscription needed)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
       - name: Publish to VS Code Marketplace
+        # --azure-credential: vsce takes the token from the Azure login above
+        # instead of a Personal Access Token.
         run: |
           if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
-            vsce publish --pre-release --packagePath kubectl-control.vsix
+            vsce publish --pre-release --azure-credential --packagePath kubectl-control.vsix
           else
-            vsce publish --packagePath kubectl-control.vsix
+            vsce publish --azure-credential --packagePath kubectl-control.vsix
           fi
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
