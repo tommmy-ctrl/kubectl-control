@@ -1,13 +1,19 @@
 name: Marketplace identity (one-time setup)
 
-# Run once manually after setting up the Entra app registration (docs/RELEASE.md §5).
-# It logs in as the publishing identity, creates its Azure DevOps profile (an
-# identity that never talked to Azure DevOps has none, and the Marketplace can
-# only add members that have one) and prints the ID to add as a publisher member.
-# Nothing is published and no secret is printed.
+# One-time setup (docs/RELEASE.md §3a step 5). It logs in as the publishing
+# identity, creates its Azure DevOps profile (an identity that never talked to
+# Azure DevOps has none, and the Marketplace can only add members that have one)
+# and prints the ID to add as a publisher member. Nothing is published and no
+# secret is printed.
+#
+# Triggers: a push to `beta` that changes this file (workflow_dispatch only works
+# once the file also exists on the default branch `main`), or manually.
 
 on:
   workflow_dispatch:
+  push:
+    branches: [beta]
+    paths: ['.github/workflows/marketplace-identity.yml']
 
 jobs:
   identity:
