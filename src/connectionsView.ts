@@ -10,12 +10,14 @@ import { welcomeHtml, lockHtml, formHtml } from './webviews/templates';
 import { t, getLanguage } from './i18n';
 import { confirmKubeconfigExec } from './execTrust';
 import { isLocked } from './commandGuard';
+import { isBelowMinimum, MIN_PASSWORD_LENGTH } from './passwordPolicy';
 
 export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'kubectl-control.connectionsView';
 
     private view?: vscode.WebviewView;
     private _welcomeMode = false;
+    private _shortPasswordHintShown = false;
     private _lastRenderedMode: 'welcome' | 'lock' | 'form' | undefined;
     private _messageHandlerDisposable?: vscode.Disposable;
 
@@ -100,6 +102,18 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
             } else {
                 void this.view?.webview.postMessage({ command: 'unlockFailed' });
             }
+            return;
+        }
+        // Passwords set before the 12-character minimum still unlock; suggest a change once per session.
+        if (isBelowMinimum(password) && !this._shortPasswordHintShown) {
+            this._shortPasswordHintShown = true;
+            const btnSettings = t('Open settings menu');
+            void vscode.window.showWarningMessage(
+                t('Your lock password is shorter than {0} characters. Please choose a longer one via Settings menu (⚙) ▸ Change Password.', MIN_PASSWORD_LENGTH),
+                btnSettings,
+            ).then(choice => {
+                if (choice === btnSettings) { void vscode.commands.executeCommand('kubectl-control.settingsMenu'); }
+            });
         }
     }
 
