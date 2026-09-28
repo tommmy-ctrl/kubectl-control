@@ -192,17 +192,26 @@ only runs `vsce package` (a local build, no Marketplace interaction) and needs n
    App registrations ▸ **New registration** (name e.g. `kubectl-control-marketplace`, single
    tenant, no redirect URI). No Azure subscription is needed. Note the *Application (client) ID*
    and *Directory (tenant) ID*.
-3. **Federated credential.** In the app: Certificates & secrets ▸ Federated credentials ▸
-   **Add credential** ▸ scenario *GitHub Actions deploying Azure resources*:
-   Organization `tommmy-ctrl`, Repository `kubectl-control`, Entity type **Environment**,
-   Environment name `marketplace`. (Resulting subject:
-   `repo:tommmy-ctrl/kubectl-control:environment:marketplace`, audience
-   `api://AzureADTokenExchange`.) Do **not** create a client secret.
+3. **Federated credentials (two).** In the app: Certificates & secrets ▸ Federated credentials ▸
+   **Add credential** ▸ scenario *GitHub Actions deploying Azure resources*: Organization
+   `tommmy-ctrl`, Organization ID `181824518`, Repository `kubectl-control`, Repository ID
+   `1242445166`, Entity type **Environment**, Environment name `marketplace`, audience
+   `api://AzureADTokenExchange`. The *Name* field is only a label (e.g.
+   `github-marketplace-immutable`; no `:` or `/`). Add it twice with these subjects:
+   - `repo:tommmy-ctrl@181824518/kubectl-control@1242445166:environment:marketplace`
+     (the generated default — GitHub's immutable-ID format, used for repos created, renamed
+     or transferred after 2026-07-15)
+   - `repo:tommmy-ctrl/kubectl-control:environment:marketplace` (via *Edit* on the subject —
+     the classic format this repo, created 2026-05-18, still receives)
+
+   Entra compares the subject exactly; keeping both makes a later rename/transfer harmless.
+   Do **not** create a client secret.
 4. **GitHub variables.** In the `marketplace` environment add the *variables* (not secrets)
    `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` with the values from step 2.
-5. **Get the Marketplace member ID.** Actions ▸ **Marketplace identity (one-time setup)** ▸
-   Run workflow on `beta`. It creates the identity's Azure DevOps profile and prints its ID in
-   the run summary.
+5. **Get the Marketplace member ID.** The workflow **Marketplace identity (one-time setup)**
+   runs on every push to `beta` that changes `.github/workflows/marketplace-identity.yml`
+   (manual *Run workflow* only works once the file is on `main`). It creates the identity's
+   Azure DevOps profile and prints its ID in the run summary.
 6. **Add the identity to the publisher.** [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage)
    ▸ publisher `tommmy-ctrl` ▸ **Members** ▸ Add ▸ paste the ID from step 5 ▸ role
    **Contributor** (may publish updates; cannot manage the publisher).
