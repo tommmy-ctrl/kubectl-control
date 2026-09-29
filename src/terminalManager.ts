@@ -277,11 +277,12 @@ export class TerminalManager implements vscode.Disposable {
         if (this._kubectlAvailable === true) {
             return true;
         }
-        const { exec } = await import('node:child_process');
+        const { execFile } = await import('node:child_process');
         const { promisify } = await import('node:util');
-        const execAsync = promisify(exec);
+        const execFileAsync = promisify(execFile);
         try {
-            await execAsync('kubectl version --client --output=json');
+            // SECURITY: execFile with an argument array — no shell involved.
+            await execFileAsync('kubectl', ['version', '--client', '--output=json'], { timeout: 5000 });
             this._kubectlAvailable = true;
             return true;
         } catch (e: unknown) {

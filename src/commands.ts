@@ -12,6 +12,7 @@ import { fetchNamespaces, FALLBACK_NAMESPACES } from './features/namespaceBrowse
 import { t, getLanguage } from './i18n';
 import { ensureUnlocked, registerGuardedCommand } from './commandGuard';
 import { ensureClusterExecTrusted } from './execTrust';
+import { MIN_PASSWORD_LENGTH, validateNewPassword } from './passwordPolicy';
 
 export function registerCommands(
     context: vscode.ExtensionContext,
@@ -321,8 +322,8 @@ async function handleExport(store: ClusterStore): Promise<void> {
     const password = await vscode.window.showInputBox({
         title: t('Set Export Password'),
         password: true,
-        prompt: t('Password to encrypt the export file (min. 6 characters)'),
-        validateInput: v => (!v || v.length < 6) ? t('At least 6 characters required') : undefined
+        prompt: t('Password to encrypt the export file (min. {0} characters)', MIN_PASSWORD_LENGTH),
+        validateInput: validateNewPassword
     });
     if (password === undefined) { return; }
 
@@ -361,8 +362,8 @@ async function handleChangePassword(lockService: LockService): Promise<void> {
     const newPwd = await vscode.window.showInputBox({
         title: t('New Password'),
         password: true,
-        prompt: t('New password (min. 6 characters)'),
-        validateInput: v => (!v || v.length < 6) ? t('At least 6 characters required') : undefined
+        prompt: t('New password (min. {0} characters)', MIN_PASSWORD_LENGTH),
+        validateInput: validateNewPassword
     });
     if (newPwd === undefined) { return; }
 

@@ -59,8 +59,6 @@ export const de: Record<string, string> = {
     'Kubectl Control – Settings': 'Kubectl Control – Einstellungen',
     'Select action': 'Aktion wählen',
     'Set Export Password': 'Export-Passwort festlegen',
-    'Password to encrypt the export file (min. 6 characters)': 'Passwort zum Verschlüsseln der Exportdatei (min. 6 Zeichen)',
-    'At least 6 characters required': 'Mindestens 6 Zeichen erforderlich',
     'Confirm Password': 'Passwort bestätigen',
     'Repeat password': 'Passwort wiederholen',
     'Passwords do not match': 'Passwörter stimmen nicht überein',
@@ -68,7 +66,6 @@ export const de: Record<string, string> = {
     'Old Password': 'Altes Passwort',
     'Enter current password': 'Aktuelles Passwort eingeben',
     'New Password': 'Neues Passwort',
-    'New password (min. 6 characters)': 'Neues Passwort (min. 6 Zeichen)',
     'Confirm New Password': 'Neues Passwort bestätigen',
     'Password changed successfully.': 'Passwort erfolgreich geändert.',
     'Old password is incorrect.': 'Altes Passwort ist falsch.',
@@ -109,7 +106,6 @@ export const de: Record<string, string> = {
     '{0} connection(s) imported from ~/.kube/config, {1} already existed.':
         '{0} Verbindung(en) aus ~/.kube/config importiert, {1} bereits vorhanden.',
     'Set Password': 'Passwort festlegen',
-    'At least 6 characters': 'Mindestens 6 Zeichen',
     'Password protection enabled.': 'Passwort-Schutz aktiviert.',
 
     // ── gistSync.ts ──────────────────────────────────────────────────────────
@@ -131,7 +127,6 @@ export const de: Record<string, string> = {
     'GitHub Sync – Set Password': 'GitHub Sync – Passwort festlegen',
     'This password encrypts your connection data (min. 12 characters). Remember it — you will be asked for it once on each device.':
         'Dieses Passwort verschlüsselt deine Verbindungsdaten (min. 12 Zeichen). Merke es dir — es wird auf jedem Gerät einmalig abgefragt.',
-    'At least 12 characters': 'Mindestens 12 Zeichen',
     'GitHub sign-in failed. Please try again.': 'GitHub-Anmeldung fehlgeschlagen. Bitte erneut versuchen.',
     'kubectl-control GitHub Sync active — click to sync manually': 'kubectl-control GitHub Sync aktiv — klicken zum manuellen Sync',
 
@@ -293,4 +288,11 @@ export const de: Record<string, string> = {
     '\n🛡️ Uses a credential plugin that has not been approved yet — open a terminal to review and approve it. Status checks are paused until then.\n': '\n🛡️ Verwendet ein noch nicht freigegebenes Credential-Plugin — Terminal öffnen, um es zu prüfen und freizugeben. Status-Checks pausieren bis dahin.\n',
     '(+{0} more characters)': '(+{0} weitere Zeichen)',
     'Connection "{0}" was blocked: its kubeconfig contains keys that differ only in upper/lower case (e.g. "Command" and "command"). Such a file can disguise which program kubectl would run. Please fix the kubeconfig.': 'Verbindung "{0}" wurde blockiert: Ihre kubeconfig enthält Schlüssel, die sich nur in Groß-/Kleinschreibung unterscheiden (z. B. "Command" und "command"). So eine Datei kann verschleiern, welches Programm kubectl ausführt. Bitte die kubeconfig korrigieren.',
+    // ── passwordPolicy.ts ────────────────────────────────────────────────────
+    'At least {0} characters required': 'Mindestens {0} Zeichen erforderlich',
+    'At least {0} characters': 'Mindestens {0} Zeichen',
+    'Password to encrypt the export file (min. {0} characters)': 'Passwort zum Verschlüsseln der Exportdatei (min. {0} Zeichen)',
+    'New password (min. {0} characters)': 'Neues Passwort (min. {0} Zeichen)',
+    'Open settings menu': 'Einstellungsmenü öffnen',
+    'Your lock password is shorter than {0} characters. Please choose a longer one via Settings menu (⚙) ▸ Change Password.': 'Dein Sperr-Passwort ist kürzer als {0} Zeichen. Bitte wähle ein längeres über das Einstellungsmenü (⚙) ▸ Passwort ändern.',
 };

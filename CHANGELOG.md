@@ -9,6 +9,22 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.4.4] – 2026-09-28
+
+### Security
+- **New passwords must have at least 12 characters** (was 6) — for the lock password, the
+  export-file password and GitHub Sync (already 12). Existing shorter lock passwords keep
+  working; after unlocking with one, a one-time hint per session suggests choosing a longer
+  password. Older export files still import with their original password.
+  ([src/passwordPolicy.ts](src/passwordPolicy.ts))
+- **The kubectl availability check no longer runs through a shell.** It now uses `execFile`
+  with an argument array, like every other kubectl call.
+  ([src/terminalManager.ts](src/terminalManager.ts))
+
+### Changed
+- **Marketplace publishing uses Microsoft Entra ID (OIDC) instead of a Personal Access
+  Token** — no long-lived secret is stored any more. See [docs/RELEASE.md](docs/RELEASE.md) §3a.
+
 ## [1.4.3] – 2026-09-27
 
 > Marketplace **pre-release** (tag `v1.4.3-pre`, see [docs/RELEASE.md](docs/RELEASE.md) §1b) —
