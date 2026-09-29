@@ -4,6 +4,7 @@ import { TerminalManager } from './terminalManager';
 import { LockService } from './lockService';
 import { ClusterStatusService, ClusterStatus } from './clusterStatus';
 import { t } from './i18n';
+import { getCredentialExpiry, expiryState, daysUntil } from './credentialExpiry';
 
 // ── Tree node union type ──────────────────────────────────────────────────────
 
@@ -59,6 +60,22 @@ export class ClusterTreeItem extends vscode.TreeItem {
         } else if (status === 'untrusted') {
             desc += ' 🛡️';
         }
+        // Credential expiry read from the kubeconfig (client certificate / JWT token).
+        const expiry = getCredentialExpiry(profile.kubeconfigData, profile.activeContext);
+        const expState = expiry ? expiryState(expiry) : 'ok';
+        let expiryLine = '';
+        if (expiry && expState !== 'ok') {
+            const date = expiry.expiresAt.toISOString().slice(0, 10);
+            const days = daysUntil(expiry.expiresAt);
+            const what = expiry.kind === 'certificate' ? t('Client certificate') : t('Token');
+            if (expState === 'expired') {
+                desc += ' ⛔';
+                expiryLine = t('\n⛔ {0} expired on {1} — re-import the kubeconfig.\n', what, date);
+            } else {
+                desc += ` ⏳${days}d`;
+                expiryLine = t('\n⏳ {0} expires on {1} (in {2} days).\n', what, date, days);
+            }
+        }
         this.description = desc;
 
         const tooltipLines =
@@ -70,6 +87,7 @@ export class ClusterTreeItem extends vscode.TreeItem {
             (profile.isProd ? t('\n⚠️ Production environment — changes take effect immediately\n') : '') +
             (status === 'unreachable' ? t('\n⚠️ Cluster unreachable\n') : '') +
             (status === 'unauthorized' ? t('\n⚠️ Token expired or invalid — not authenticated. Re-import kubeconfig.\n') : '') +
+            expiryLine +
             (status === 'untrusted' ? t('\n🛡️ Uses a credential plugin that has not been approved yet — open a terminal to review and approve it. Status checks are paused until then.\n') : '') +
             (terminalCount > 1 ? t('\n_{0} terminals are open_', terminalCount)
                 : hasTerminal ? t('\n_Terminal is open_') : '');
