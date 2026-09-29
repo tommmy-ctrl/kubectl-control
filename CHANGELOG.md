@@ -9,6 +9,19 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.4.6] – 2026-09-29
+
+### Changed
+- **Namespaces are picked from a menu instead of typed.** Pods, Deployments, Permissions
+  (can-i), Helm History and Port Forward now show the cluster's live namespaces (current one
+  first, type to filter). If the account may not list namespaces, the current one and
+  *Enter manually…* remain; a valid name typed into the filter is accepted directly.
+  ([src/features/namespaceBrowser.ts](src/features/namespaceBrowser.ts))
+
+### Added
+- **"All namespaces" for Pods and Deployments** (`kubectl get … --all-namespaces`), with an
+  extra *Namespace* column; 📋 Logs and ⌨ Shell use each pod's own namespace.
+
 ## [1.4.5] – 2026-09-29
 
 ### Added

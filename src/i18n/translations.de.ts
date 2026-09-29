@@ -131,15 +131,10 @@ export const de: Record<string, string> = {
     'kubectl-control GitHub Sync active — click to sync manually': 'kubectl-control GitHub Sync aktiv — klicken zum manuellen Sync',
 
     // ── features/rbacViewer.ts ───────────────────────────────────────────────
-    'Namespace must not be empty.': 'Namespace darf nicht leer sein.',
-    'Namespace must be at most {0} characters long.': 'Namespace darf maximal {0} Zeichen lang sein.',
-    'Namespace must comply with RFC1123 (lowercase letters, digits, hyphens).':
-        'Namespace muss RFC1123 entsprechen (Kleinbuchstaben, Ziffern, Bindestriche).',
     'No clusters configured.': 'Keine Cluster konfiguriert.',
     'Select cluster': 'Cluster auswählen',
     'Cluster …': 'Cluster …',
     'Namespace': 'Namespace',
-    'Enter namespace (RFC1123)': 'Namespace eingeben (RFC1123)',
     'kubectl auth can-i --list failed: {0}': 'kubectl auth can-i --list fehlgeschlagen: {0}',
     'Verb (e.g. get, list, delete)': 'Verb (z.B. get, list, delete)',
     'Enter kubectl verb': 'kubectl-Verb eingeben',
@@ -312,4 +307,15 @@ export const de: Record<string, string> = {
     'Approval revoked for: {0}': 'Freigabe entzogen für: {0}',
     '$(shield) Credential Plugin Approvals': '$(shield) Freigaben für Credential-Plugins',
     'Review, approve or revoke exec/auth-provider commands': 'exec/auth-provider-Befehle prüfen, freigeben oder entziehen',
+    // ── namespaceBrowser.ts (namespace picker) ──────────────────────────────
+    'current': 'aktuell',
+    '$(edit) Enter manually…': '$(edit) Manuell eingeben…',
+    '$(globe) All namespaces': '$(globe) Alle Namespaces',
+    'Select namespace (type to filter)': 'Namespace wählen (tippen zum Filtern)',
+    'Namespaces could not be listed — pick the current one or enter one manually': 'Namespaces konnten nicht gelesen werden — aktuellen wählen oder manuell eingeben',
+    'Invalid namespace (RFC 1123: lowercase letters, digits and hyphens, max. 63 characters)': 'Ungültiger Namespace (RFC 1123: Kleinbuchstaben, Ziffern und Bindestriche, max. 63 Zeichen)',
+    'Pods — {0}: select namespace': 'Pods — {0}: Namespace wählen',
+    'Deployments — {0}: select namespace': 'Deployments — {0}: Namespace wählen',
+    'all namespaces': 'alle Namespaces',
+    'Permissions (can-i) — {0}: select namespace': 'Berechtigungen (can-i) — {0}: Namespace wählen',
 };

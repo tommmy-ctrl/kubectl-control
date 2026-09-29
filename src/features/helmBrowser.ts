@@ -6,6 +6,7 @@ import { ClusterTreeItem } from '../treeDataProvider';
 import { log } from '../logger';
 import { ensureClusterExecTrusted } from '../execTrust';
 import { ensureUnlocked, registerGuardedCommand } from '../commandGuard';
+import { pickNamespace } from './namespaceBrowser';
 
 // ── Validation helpers ────────────────────────────────────────────────────────
 
@@ -339,15 +340,7 @@ async function runHelmHistory(
         });
         if (!nameInput) { return; }
 
-        const nsInput = await vscode.window.showInputBox({
-            prompt: 'Namespace',
-            value: cluster.namespace ?? 'default',
-            title: `Helm History — ${cluster.name}`,
-            validateInput: v =>
-                isValidNamespace(v)
-                    ? undefined
-                    : 'Invalid namespace (RFC 1123: lowercase, alphanumeric, hyphens)',
-        });
+        const nsInput = await pickNamespace(cluster, { title: `Helm History — ${cluster.name}` }) as string | undefined;
         if (!nsInput) { return; }
 
         releaseName = nameInput;

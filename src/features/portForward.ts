@@ -7,6 +7,7 @@ import { ClusterTreeItem } from '../treeDataProvider';
 import { log } from '../logger';
 import { ensureClusterExecTrusted } from '../execTrust';
 import { registerGuardedCommand } from '../commandGuard';
+import { pickNamespace } from './namespaceBrowser';
 
 // ── Validation regexes ────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ class PortForwardManager {
         remotePort: number,
         namespace: string,
     ): Promise<string> {
+        if (!NAMESPACE_RE.test(namespace)) { throw new Error(`Invalid namespace: "${namespace}"`); }
         const { path: kubeconfigPath, cleanup } = await createPersistentKubeconfig(cluster.kubeconfigData);
 
         const args: string[] = [];
@@ -200,19 +202,7 @@ export function registerPortForward(
             const remotePort = Number(remotePortStr);
 
             // Prompt: namespace
-            const defaultNs = cluster.namespace ?? 'default';
-            const nsInput = await vscode.window.showInputBox({
-                title: `Port-forward — ${cluster.name}`,
-                prompt: 'Namespace',
-                value: defaultNs,
-                validateInput(v) {
-                    if (!v) { return 'Namespace is required.'; }
-                    if (!NAMESPACE_RE.test(v)) {
-                        return 'Must be a valid RFC 1123 label (lowercase alphanumeric and hyphens).';
-                    }
-                    return null;
-                },
-            });
+            const nsInput = await pickNamespace(cluster, { title: `Port-forward — ${cluster.name}` }) as string | undefined;
             if (!nsInput) { return; }
 
             try {
