@@ -50,7 +50,9 @@ export function activate(context: vscode.ExtensionContext) {
     const clusterStatusService = new ClusterStatusService(store, terminalManager, isLocked);
     // Background status checks are skipped while locked — catch up right after unlocking.
     context.subscriptions.push(lockService.onStateChange(() => {
-        if (lockService.isUnlocked()) { void clusterStatusService.checkAll(); }
+        // Slight delay: let the connections form and tree render first, then start the
+        // (kubectl-heavy) catch-up round.
+        if (lockService.isUnlocked()) { setTimeout(() => void clusterStatusService.checkAll(), 1500); }
     }));
     const treeProvider = new ClusterTreeDataProvider(store, terminalManager, lockService, clusterStatusService);
     const connectionsViewProvider = new ConnectionsViewProvider(

@@ -400,10 +400,22 @@ export function lockHtml(nonce: string, cspSource: string, lang: Lang): string {
         document.getElementById('lockForm').addEventListener('submit', e => {
             e.preventDefault();
             document.getElementById('lockError').style.display = 'none';
+            // Visible progress: verifying (PBKDF2 + keychain access, over SSH) can take a moment.
+            const btn = document.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.textContent = ${JSON.stringify(wt(lang, 'Unlocking…'))};
+            document.getElementById('lockPwd').disabled = true;
             vscode.postMessage({ command: 'unlock', password: document.getElementById('lockPwd').value });
         });
+        function resetUnlockButton() {
+            const btn = document.querySelector('button[type="submit"]');
+            btn.disabled = false;
+            btn.textContent = ${JSON.stringify(wt(lang, 'Unlock'))};
+            document.getElementById('lockPwd').disabled = false;
+        }
         window.addEventListener('message', event => {
             if (event.data.command === 'unlockFailed') {
+                resetUnlockButton();
                 const err = document.getElementById('lockError');
                 err.textContent = ${JSON.stringify(wt(lang, 'Incorrect password. Please try again.'))};
                 err.style.display = '';
@@ -413,6 +425,7 @@ export function lockHtml(nonce: string, cspSource: string, lang: Lang): string {
                 setTimeout(() => pwd.classList.remove('input-error'), 1500);
             }
             if (event.data.command === 'unlockLockedOut') {
+                resetUnlockButton();
                 const err = document.getElementById('lockError');
                 err.textContent = ${JSON.stringify(lockedOutPrefix)} + event.data.seconds + ${JSON.stringify(lockedOutSuffix)};
                 err.style.display = '';

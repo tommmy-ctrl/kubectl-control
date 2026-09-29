@@ -9,6 +9,18 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.4.8] – 2026-09-29
+
+### Changed
+- **Unlocking shows progress and blocks less.** After clicking *Unlock* the button changes to
+  "Unlocking…" and the form is disabled until the result arrives (it resets on a wrong password
+  or lockout). The password hash (PBKDF2, 200,000 iterations) is now computed off the extension
+  host's main thread, a successful unlock no longer writes the brute-force counters when there
+  is nothing to reset (each SecretStorage write is a round trip to the local keychain in
+  Remote-SSH windows), and the status-check catch-up starts 1.5 s after unlocking so the view
+  renders first. The log records how long verification took. Existing passwords are unaffected
+  — the hash is bit-for-bit identical. ([src/lockService.ts](src/lockService.ts))
+
 ## [1.4.7] – 2026-09-29
 
 ### Fixed

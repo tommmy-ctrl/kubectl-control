@@ -322,4 +322,6 @@ export const de: Record<string, string> = {
     'Loading pods from "{0}" ({1})…': 'Pods von "{0}" ({1}) werden geladen…',
     'Loading deployments from "{0}" ({1})…': 'Deployments von "{0}" ({1}) werden geladen…',
     'Kubectl Control: loading {0}…': 'Kubectl Control: {0} werden geladen…',
+    // ── webviews/templates.ts (unlock progress) ──────────────────────────────
+    'Unlocking…': 'Wird entsperrt…',
 };
