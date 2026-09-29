@@ -77,7 +77,8 @@ export async function execWithKubeconfig(
     try {
         const cmdArgs: string[] = [];
         if (context !== undefined) {
-            cmdArgs.push('--context', context);
+            // helm names the flag --kube-context (its --context does not exist).
+            cmdArgs.push(contextFlag(binary), context);
         }
         cmdArgs.push(...args);
 
@@ -90,6 +91,11 @@ export async function execWithKubeconfig(
     } finally {
         await fs.unlink(tempFile).catch(() => undefined);
     }
+}
+
+/** The CLI flag that selects a kubeconfig context for `binary`. */
+export function contextFlag(binary: string): string {
+    return path.basename(binary).replace(/\.exe$/i, '') === 'helm' ? '--kube-context' : '--context';
 }
 
 /**
