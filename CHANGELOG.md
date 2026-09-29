@@ -9,6 +9,21 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.4.9] – 2026-09-29
+
+### Changed
+- **List Pods / List Deployments are much faster on larger clusters.** The views now use
+  kubectl's table output, which the API server renders with only the displayed columns, instead
+  of downloading and parsing every full object as JSON (tens of MB for *All namespaces* on big
+  clusters). This also takes a lot of memory and CPU load off the machine the extension runs on
+  — in Remote-SSH, the remote host. The *Status* column now shows what `kubectl get pods`
+  shows (e.g. `CrashLoopBackOff` instead of just `Running`), Deployments gain an *Age* column,
+  and a pod's containers are only looked up when you click *Logs* or *Shell*.
+  ([src/features/resourceViewer.ts](src/features/resourceViewer.ts),
+  [src/features/kubeTable.ts](src/features/kubeTable.ts))
+- The log now records how long each list and namespace lookup took, to pin down remaining slow
+  spots.
+
 ## [1.4.8] – 2026-09-29
 
 ### Changed

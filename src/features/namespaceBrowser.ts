@@ -38,6 +38,7 @@ export async function fetchNamespaces(
     if (cached && Date.now() - cached.at < NAMESPACE_CACHE_MS) {
         return cached.names;
     }
+    const started = Date.now();
     try {
         const { stdout } = await execWithKubeconfig(
             cluster.kubeconfigData,
@@ -52,6 +53,7 @@ export async function fetchNamespaces(
 
         const result = [...new Set(names)].sort();
         namespaceCache.set(key, { at: Date.now(), names: result });
+        log.info(`fetchNamespaces: ${result.length} namespaces for cluster "${cluster.name}" in ${Date.now() - started} ms`);
         return result;
     } catch (err) {
         log.warn(

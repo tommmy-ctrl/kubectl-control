@@ -8,6 +8,7 @@ import { t } from '../i18n';
 import { ensureClusterExecTrusted } from '../execTrust';
 import { ensureUnlocked, registerGuardedCommand } from '../commandGuard';
 import { ALL_NAMESPACES, NAMESPACE_RE, pickNamespace } from './namespaceBrowser';
+import { KubeTableRow, parseKubectlTable, podStatusClass } from './kubeTable';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -34,21 +35,6 @@ function generateNonce(): string {
     return crypto.randomBytes(16).toString('base64');
 }
 
-function formatAge(timestamp: string | undefined): string {
-    if (!timestamp) { return 'N/A'; }
-    const created = new Date(timestamp).getTime();
-    if (isNaN(created)) { return 'N/A'; }
-    const diffMs = Date.now() - created;
-    const seconds = Math.floor(diffMs / 1000);
-    if (seconds < 60) { return `${seconds}s`; }
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) { return `${minutes}m`; }
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) { return `${hours}h`; }
-    const days = Math.floor(hours / 24);
-    return `${days}d`;
-}
-
 // ── HTML builders ─────────────────────────────────────────────────────────────
 
 function buildLoadingHtml(message: string): string {
@@ -64,24 +50,18 @@ function buildLoadingHtml(message: string): string {
 </html>`;
 }
 
-function buildPodsHtml(nonce: string, cluster: ClusterProfile, namespace: string, items: KubePodItem[], allNs: boolean): string {
+function buildPodsHtml(nonce: string, cluster: ClusterProfile, namespace: string, items: KubeTableRow[], allNs: boolean): string {
     const rows = items.map(pod => {
-        const containers = pod.spec?.containers ?? [];
-        const totalContainers = containers.length;
-        const statuses = pod.status?.containerStatuses ?? [];
-        const readyCount = statuses.filter(s => s.ready).length;
-        const phase = pod.status?.phase ?? 'Unknown';
-        const restarts = statuses.reduce((sum, s) => sum + (s.restartCount ?? 0), 0);
-        const age = formatAge(pod.metadata?.creationTimestamp);
-        const podName = pod.metadata?.name ?? '';
-        const podNs = pod.metadata?.namespace ?? '';
+        const podName = pod.NAME ?? '';
+        const podNs = pod.NAMESPACE ?? '';
+        const status = pod.STATUS ?? 'Unknown';
         return `<tr>
             ${allNs ? `<td>${escapeHtml(podNs)}</td>` : ''}
             <td>${escapeHtml(podName)}</td>
-            <td>${escapeHtml(readyCount)}/${escapeHtml(totalContainers)}</td>
-            <td><span class="status status-${escapeHtml(phase.toLowerCase())}">${escapeHtml(phase)}</span></td>
-            <td>${escapeHtml(restarts)}</td>
-            <td>${escapeHtml(age)}</td>
+            <td>${escapeHtml(pod.READY)}</td>
+            <td><span class="status status-${podStatusClass(status)}">${escapeHtml(status)}</span></td>
+            <td>${escapeHtml(pod.RESTARTS)}</td>
+            <td>${escapeHtml(pod.AGE)}</td>
             <td>
                 <button class="logsBtn" data-pod="${escapeHtml(podName)}" data-ns="${escapeHtml(podNs)}">&#128220; Logs</button>
                 <button class="shellBtn" data-pod="${escapeHtml(podName)}" data-ns="${escapeHtml(podNs)}">&#9000; Shell</button>
@@ -93,23 +73,18 @@ function buildPodsHtml(nonce: string, cluster: ClusterProfile, namespace: string
     return buildPageHtml(nonce, `Pods — ${cluster.name} / ${namespace}`, thead, rows, items.length, 'pods', allNs ? 7 : 6);
 }
 
-function buildDeploymentsHtml(nonce: string, cluster: ClusterProfile, namespace: string, items: KubeDeploymentItem[], allNs: boolean): string {
-    const rows = items.map(dep => {
-        const desired = dep.spec?.replicas ?? 0;
-        const ready = dep.status?.readyReplicas ?? 0;
-        const upToDate = dep.status?.updatedReplicas ?? 0;
-        const available = dep.status?.availableReplicas ?? 0;
-        return `<tr>
-            ${allNs ? `<td>${escapeHtml(dep.metadata?.namespace)}</td>` : ''}
-            <td>${escapeHtml(dep.metadata?.name)}</td>
-            <td>${escapeHtml(ready)}/${escapeHtml(desired)}</td>
-            <td>${escapeHtml(upToDate)}</td>
-            <td>${escapeHtml(available)}</td>
-        </tr>`;
-    }).join('');
+function buildDeploymentsHtml(nonce: string, cluster: ClusterProfile, namespace: string, items: KubeTableRow[], allNs: boolean): string {
+    const rows = items.map(dep => `<tr>
+            ${allNs ? `<td>${escapeHtml(dep.NAMESPACE)}</td>` : ''}
+            <td>${escapeHtml(dep.NAME)}</td>
+            <td>${escapeHtml(dep.READY)}</td>
+            <td>${escapeHtml(dep['UP-TO-DATE'])}</td>
+            <td>${escapeHtml(dep.AVAILABLE)}</td>
+            <td>${escapeHtml(dep.AGE)}</td>
+        </tr>`).join('');
 
-    const thead = `<tr>${allNs ? '<th>Namespace</th>' : ''}<th>Name</th><th>Ready</th><th>Up-to-date</th><th>Available</th></tr>`;
-    return buildPageHtml(nonce, `Deployments — ${cluster.name} / ${namespace}`, thead, rows, items.length, 'deployments', allNs ? 5 : 4);
+    const thead = `<tr>${allNs ? '<th>Namespace</th>' : ''}<th>Name</th><th>Ready</th><th>Up-to-date</th><th>Available</th><th>Age</th></tr>`;
+    return buildPageHtml(nonce, `Deployments — ${cluster.name} / ${namespace}`, thead, rows, items.length, 'deployments', allNs ? 6 : 5);
 }
 
 function buildPageHtml(
@@ -201,6 +176,7 @@ function buildPageHtml(
         .status-pending { background: var(--vscode-terminal-ansiYellow); color: #000; }
         .status-failed  { background: var(--vscode-terminal-ansiRed);    color: #fff; }
         .status-succeeded { background: var(--vscode-terminal-ansiCyan); color: #000; }
+        .status-other { border: 1px solid var(--vscode-panel-border); }
     </style>
 </head>
 <body>
@@ -237,54 +213,8 @@ function buildPageHtml(
 
 // ── Kubernetes response types ──────────────────────────────────────────────────
 
-interface KubeMetadata {
-    name?: string;
-    namespace?: string;
-    creationTimestamp?: string;
-}
-
-interface KubeContainerStatus {
-    ready?: boolean;
-    restartCount?: number;
-}
-
 interface KubeContainerSpec {
     name?: string;
-}
-
-interface KubePodSpec {
-    containers?: KubeContainerSpec[];
-}
-
-interface KubePodStatus {
-    phase?: string;
-    containerStatuses?: KubeContainerStatus[];
-}
-
-interface KubePodItem {
-    metadata?: KubeMetadata;
-    spec?: KubePodSpec;
-    status?: KubePodStatus;
-}
-
-interface KubeDeploymentStatus {
-    readyReplicas?: number;
-    updatedReplicas?: number;
-    availableReplicas?: number;
-}
-
-interface KubeDeploymentSpec {
-    replicas?: number;
-}
-
-interface KubeDeploymentItem {
-    metadata?: KubeMetadata;
-    spec?: KubeDeploymentSpec;
-    status?: KubeDeploymentStatus;
-}
-
-interface KubeList<T> {
-    items?: T[];
 }
 
 // ── Core viewer logic ─────────────────────────────────────────────────────────
@@ -445,6 +375,27 @@ async function openPodShell(
     log.info(`[shell] exec pod=${podName} ns=${namespace} cluster="${cluster.name}"`);
 }
 
+/**
+ * Container names of one pod, fetched on demand (the table view has no spec).
+ * Returns [] on any error — openPodLogs/openPodShell then run without `-c`,
+ * which kubectl accepts for single-container pods.
+ */
+async function fetchContainers(cluster: ClusterProfile, namespace: string, podName: string): Promise<KubeContainerSpec[]> {
+    if (!K8S_NAME_RE.test(podName) || !K8S_NAME_RE.test(namespace)) { return []; }
+    try {
+        const { stdout } = await execWithKubeconfig(
+            cluster.kubeconfigData,
+            cluster.activeContext,
+            ['get', 'pod', podName, '-n', namespace, '-o', 'jsonpath={.spec.containers[*].name}'],
+            15_000,
+        );
+        return stdout.split(/\s+/).filter(n => n.length > 0).map(name => ({ name }));
+    } catch (err) {
+        log.warn(`resourceViewer: could not read containers of pod "${podName}"`, err instanceof Error ? err.message : String(err));
+        return [];
+    }
+}
+
 async function runResourceCommand(
     kind: ResourceKind,
     treeItem: ClusterTreeItem | undefined,
@@ -486,9 +437,9 @@ async function runResourceCommand(
         ? t('Loading pods from "{0}" ({1})…', cluster.name, namespace)
         : t('Loading deployments from "{0}" ({1})…', cluster.name, namespace));
 
-    // Snapshot of the last-rendered pods, so the 'logs' message handler can look up
-    // a pod's containers without re-fetching (only populated when kind === 'pods').
-    let lastPods: KubePodItem[] = [];
+    // Snapshot of the last-rendered pods, so the 'logs'/'shell' message handler only
+    // acts on pods we listed ourselves (only populated when kind === 'pods').
+    let lastPods: KubeTableRow[] = [];
 
     // 4. Function to run and render
     async function fetch(): Promise<void> {
@@ -500,37 +451,41 @@ async function runResourceCommand(
     }
 
     async function fetchInner(): Promise<void> {
+        const started = Date.now();
         try {
+            // Default table output instead of `-o json`: the API server renders only the
+            // displayed columns, so large clusters transfer and parse a fraction of the data
+            // (full pod objects for --all-namespaces easily reach tens of MB).
             const { stdout, stderr } = await execWithKubeconfig(
                 cluster!.kubeconfigData,
                 cluster!.activeContext,
-                allNs ? ['get', kind, '--all-namespaces', '-o', 'json'] : ['get', kind, '-n', namespace, '-o', 'json'],
+                // --chunk-size=0: one table in one tabwriter block — with paging, kubectl aligns
+                // each chunk separately and the column offsets parseKubectlTable() relies on
+                // would drift after the first 500 rows.
+                allNs ? ['get', kind, '--all-namespaces', '--chunk-size=0'] : ['get', kind, '-n', namespace, '--chunk-size=0'],
                 allNs ? 30_000 : 15_000,
             );
 
-            if (stderr && !stdout) {
+            // An empty result is "No resources found …" on stderr with no stdout.
+            if (stderr && !stdout.trim() && !/^No resources found/i.test(stderr.trim())) {
                 log.warn(`resourceViewer(${kind}): stderr: ${stderr}`);
                 void vscode.window.showErrorMessage(`kubectl error: ${stderr.trim()}`);
                 return;
             }
 
+            const items = parseKubectlTable(stdout);
             const nonce = generateNonce();
-
             if (kind === 'pods') {
-                const list = JSON.parse(stdout) as KubeList<KubePodItem>;
-                const items = list.items ?? [];
                 lastPods = items;
                 panel.webview.html = buildPodsHtml(nonce, cluster!, namespace, items, allNs);
             } else {
-                const list = JSON.parse(stdout) as KubeList<KubeDeploymentItem>;
-                const items = list.items ?? [];
                 panel.webview.html = buildDeploymentsHtml(nonce, cluster!, namespace, items, allNs);
             }
 
-            log.info(`resourceViewer: rendered ${kind} for cluster "${cluster!.name}" ns="${namespace}"`);
+            log.info(`resourceViewer: rendered ${items.length} ${kind} for cluster "${cluster!.name}" ns="${namespace}" in ${Date.now() - started} ms (${Math.round(stdout.length / 1024)} KiB)`);
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            log.error(`resourceViewer(${kind}) error`, err);
+            log.error(`resourceViewer(${kind}) error after ${Date.now() - started} ms`, err);
             void vscode.window.showErrorMessage(`kubectl-control: ${msg}`);
         }
     }
@@ -543,17 +498,18 @@ async function runResourceCommand(
             await fetch();
         } else if ((message.command === 'logs' || message.command === 'shell') && message.pod) {
             // Resolve the pod from our own last-rendered list — never trust names from the webview.
-            const pod = lastPods.find(p => p.metadata?.name === message.pod
-                && (!allNs || p.metadata?.namespace === message.ns));
+            const pod = lastPods.find(p => p.NAME === message.pod
+                && (!allNs || p.NAMESPACE === message.ns));
             if (!pod) {
                 log.warn(`resourceViewer(${message.command}): pod "${message.pod}" not found in last-rendered list`);
                 return;
             }
-            const podNs = allNs ? (pod.metadata?.namespace ?? '') : namespace;
+            const podNs = allNs ? (pod.NAMESPACE ?? '') : namespace;
+            const containers = await fetchContainers(cluster!, podNs, message.pod);
             if (message.command === 'logs') {
-                await openPodLogs(cluster!, podNs, message.pod, pod.spec?.containers ?? []);
+                await openPodLogs(cluster!, podNs, message.pod, containers);
             } else {
-                await openPodShell(cluster!, podNs, message.pod, pod.spec?.containers ?? []);
+                await openPodShell(cluster!, podNs, message.pod, containers);
             }
         }
     });
