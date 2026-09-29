@@ -8,6 +8,13 @@ import { assertKubeconfigAllowed } from './execTrust';
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * Output limit per call. Node's default of 1 MiB is far too small for
+ * `kubectl get … -o json` on larger clusters (and --all-namespaces), which then
+ * failed with "stdout maxBuffer length exceeded".
+ */
+const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+
 // SECURITY: only allow safe context names to avoid argument injection
 const SAFE_CONTEXT_RE = /^[a-zA-Z0-9._-]+$/;
 
@@ -77,6 +84,7 @@ export async function execWithKubeconfig(
         const { stdout, stderr } = await execFileAsync(binary, cmdArgs, {
             env: { ...process.env, KUBECONFIG: tempFile },
             timeout: timeoutMs,
+            maxBuffer: MAX_OUTPUT_BYTES,
         });
         return { stdout, stderr };
     } finally {

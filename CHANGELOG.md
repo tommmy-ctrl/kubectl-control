@@ -9,6 +9,21 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.4.7] – 2026-09-29
+
+### Fixed
+- **Large resource lists failed with "stdout maxBuffer length exceeded"** — e.g. Pods in
+  *All namespaces* on bigger clusters. The output limit per kubectl/helm call was Node's
+  default of 1 MiB and is now 64 MiB. ([src/kubectlExec.ts](src/kubectlExec.ts))
+
+### Changed
+- **Faster-feeling Pods/Deployments views:** the panel shows "Loading…" immediately and a
+  spinner appears in the status bar while kubectl runs (initial load and Refresh). Timeouts
+  raised to 15 s (single namespace) / 30 s (all namespaces), since credential plugins such as
+  `aws eks get-token` alone can take a few seconds per kubectl call.
+- **The namespace list is cached per connection for 2 minutes**, so the namespace menu opens
+  instantly on repeat use.
+
 ## [1.4.6] – 2026-09-29
 
 ### Changed

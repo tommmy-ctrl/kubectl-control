@@ -318,4 +318,8 @@ export const de: Record<string, string> = {
     'Deployments — {0}: select namespace': 'Deployments — {0}: Namespace wählen',
     'all namespaces': 'alle Namespaces',
     'Permissions (can-i) — {0}: select namespace': 'Berechtigungen (can-i) — {0}: Namespace wählen',
+    // ── resourceViewer.ts (loading feedback) ─────────────────────────────────
+    'Loading pods from "{0}" ({1})…': 'Pods von "{0}" ({1}) werden geladen…',
+    'Loading deployments from "{0}" ({1})…': 'Deployments von "{0}" ({1}) werden geladen…',
+    'Kubectl Control: loading {0}…': 'Kubectl Control: {0} werden geladen…',
 };

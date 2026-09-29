@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { createHash } from 'node:crypto';
 import { ClusterProfile } from '../store';
 import { execWithKubeconfig } from '../kubectlExec';
 import { log } from '../logger';
@@ -23,10 +24,20 @@ export const FALLBACK_NAMESPACES = ['default', 'kube-system', 'kube-public'];
  * On any error (kubectl missing, unreachable, timeout, etc.) logs a warning
  * and returns an empty array so callers can fall back to FALLBACK_NAMESPACES.
  */
+/** Namespaces rarely change; caching them keeps the picker instant on repeat use. */
+const NAMESPACE_CACHE_MS = 2 * 60 * 1000;
+const namespaceCache = new Map<string, { at: number; names: string[] }>();
+
 export async function fetchNamespaces(
     cluster: ClusterProfile,
-    timeoutMs = 6000,
+    timeoutMs = 10000,
 ): Promise<string[]> {
+    // Keyed by cluster id + context + kubeconfig, so an edited connection is never served stale data.
+    const key = `${cluster.id}|${cluster.activeContext ?? ''}|${createHash('sha256').update(cluster.kubeconfigData).digest('hex')}`;
+    const cached = namespaceCache.get(key);
+    if (cached && Date.now() - cached.at < NAMESPACE_CACHE_MS) {
+        return cached.names;
+    }
     try {
         const { stdout } = await execWithKubeconfig(
             cluster.kubeconfigData,
@@ -39,7 +50,9 @@ export async function fetchNamespaces(
             .split(/\s+/)
             .filter(n => n.length > 0);
 
-        return [...new Set(names)].sort();
+        const result = [...new Set(names)].sort();
+        namespaceCache.set(key, { at: Date.now(), names: result });
+        return result;
     } catch (err) {
         log.warn(
             `fetchNamespaces: could not retrieve namespaces for cluster "${cluster.name}"`,
