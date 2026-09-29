@@ -24,6 +24,10 @@ published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in
 ### Changed
 - **Marketplace publishing uses Microsoft Entra ID (OIDC) instead of a Personal Access
   Token** — no long-lived secret is stored any more. See [docs/RELEASE.md](docs/RELEASE.md) §3a.
+- **README and Marketplace description updated** to cover all features: multiple terminals,
+  cluster status/pin/production/filter, pods & logs, port-forward, Helm, RBAC, namespace switch,
+  GitHub Sync, auto-lock, credential-plugin approval, settings; requirements corrected to
+  VS Code 1.125+ and optional `helm`.
 
 ## [1.4.3] – 2026-09-27
 
