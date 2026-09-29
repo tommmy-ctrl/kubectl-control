@@ -11,7 +11,7 @@ import { log } from './logger';
 import { fetchNamespaces, FALLBACK_NAMESPACES } from './features/namespaceBrowser';
 import { t, getLanguage } from './i18n';
 import { ensureUnlocked, registerGuardedCommand } from './commandGuard';
-import { ensureClusterExecTrusted } from './execTrust';
+import { ensureClusterExecTrusted, manageExecApprovals } from './execTrust';
 import { MIN_PASSWORD_LENGTH, validateNewPassword } from './passwordPolicy';
 
 export function registerCommands(
@@ -125,8 +125,15 @@ export function registerCommands(
         if (pick) { await terminalManager.openOrFocus(pick.cluster); }
     });
 
-    const showLogsCmd = registerGuardedCommand('kubectl-control.showLogs', () => {
+    // Deliberately NOT lock-guarded: the log is what you need when unlocking misbehaves,
+    // and it never contains kubeconfigs or passwords.
+    const showLogsCmd = vscode.commands.registerCommand('kubectl-control.showLogs', () => {
         log.show();
+    });
+
+    const manageExecApprovalsCmd = registerGuardedCommand('kubectl-control.manageExecApprovals', async () => {
+        await manageExecApprovals(store);
+        treeProvider.refresh();
     });
 
     const switchNamespaceCmd = vscode.commands.registerCommand('kubectl-control.switchNamespace', async () => {
@@ -262,6 +269,7 @@ export function registerCommands(
             { kind: vscode.QuickPickItemKind.Separator, label: t('Settings'), action: '' },
             { label: t('$(globe) Language: {0}', languageLabel), description: t('Click to switch: Auto → English → German'), action: 'cycle-language' },
             { label: t('$(settings-gear) Open Settings'), description: t('Auto-lock, status interval, terminal prompt …'), action: 'vscode-settings' },
+            { label: t('$(shield) Credential Plugin Approvals'), description: t('Review, approve or revoke exec/auth-provider commands'), action: 'exec-approvals' },
             { label: t('$(output) Show Debug Logs'), description: t('Open the Output panel with logs'), action: 'logs' },
             { label: t('$(trash) Reset Application'), description: t('Delete all connections and settings'), action: 'reset' }
         );
@@ -275,7 +283,7 @@ export function registerCommands(
         // SECURITY: these actions read, export or replace connection data and must not
         // work while locked (export used to hand out every kubeconfig without unlocking).
         // 'reset' stays available as the forgotten-password escape hatch; it only deletes.
-        const needsUnlock = new Set(['export', 'import', 'import-kubeconfig', 'sync-setup', 'sync-now', 'sync-restore', 'sync-disable', 'logs']);
+        const needsUnlock = new Set(['export', 'import', 'import-kubeconfig', 'sync-setup', 'sync-now', 'sync-restore', 'sync-disable', 'exec-approvals']);
         if (needsUnlock.has(pick.action) && !await assertUnlocked()) { return; }
 
         switch (pick.action) {
@@ -294,6 +302,7 @@ export function registerCommands(
             case 'cycle-language': await cycleLanguage(); break;
             case 'vscode-settings': await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:tommmy-ctrl.kubectl-control'); break;
             case 'logs':         log.show(); break;
+            case 'exec-approvals': await manageExecApprovals(store); treeProvider.refresh(); break;
             case 'reset':        await handleReset(context, store, lockService, treeProvider, connectionsView); break;
         }
     });
@@ -301,7 +310,7 @@ export function registerCommands(
     context.subscriptions.push(
         deleteClusterCmd, editClusterCmd, openTerminalCmd, openNewTerminalCmd, closeAllTerminalsCmd,
         filterClustersCmd, clearClusterFilterCmd,
-        quickSwitchCmd, showLogsCmd, settingsMenuCmd,
+        quickSwitchCmd, showLogsCmd, manageExecApprovalsCmd, settingsMenuCmd,
         switchNamespaceCmd, togglePinCmd, toggleProdCmd,
         registerGuardedCommand('kubectl-control.syncNow',     () => void gistSync.setupOrPush().catch(e => log.error(`syncNow failed: ${e}`))),
         registerGuardedCommand('kubectl-control.syncRestore', () => void gistSync.pull().catch(e => log.error(`syncRestore failed: ${e}`))),

@@ -9,6 +9,27 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.4.5] – 2026-09-29
+
+### Added
+- **Shell in Pod.** The Pods viewer has a new **⌨ Shell** button per pod that opens
+  `kubectl exec -it <pod> -- sh` in a terminal (container picker for multi-container pods;
+  confirmation on production clusters). ([src/features/resourceViewer.ts](src/features/resourceViewer.ts))
+- **Manage credential-plugin approvals.** Settings menu (⚙) ▸ *Credential Plugin Approvals*
+  (or Command Palette ▸ *Kubectl Control: Manage Credential Plugin Approvals*) lists every
+  connection that uses an `exec`/`auth-provider` plugin with its command and approval state.
+  Approve it there, or revoke an approval — revoking applies to every connection using the
+  identical command. ([src/execTrust.ts](src/execTrust.ts))
+
+### Changed
+- **"Show Debug Logs" works while the extension is locked** again, so the log is available
+  when unlocking misbehaves. It never contains kubeconfigs or passwords.
+
+### Notes
+- The first unlock after updating to 1.4.x can take noticeably longer: the stored connections
+  are migrated once and the status checks paused while locked all run at that moment.
+  Subsequent unlocks are fast.
+
 ## [1.4.4] – 2026-09-28
 
 ### Security

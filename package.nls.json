@@ -32,5 +32,6 @@
   "config.language.enum.auto": "Follow VS Code's display language",
   "config.language.enum.en": "English",
   "config.language.enum.de": "German",
-  "view.connectionsView.name": "Connections"
+  "view.connectionsView.name": "Connections",
+  "command.manageExecApprovals": "Kubectl Control: Manage Credential Plugin Approvals"
 }

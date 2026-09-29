@@ -25,7 +25,7 @@ A VS Code extension for managing multiple Kubernetes clusters with isolated kube
 - **Filter** the tree by name, namespace or group (search icon in the view title)
 
 ### Cluster Tools (context menu of a cluster)
-- **List Pods / List Deployments** for a namespace; pods show restarts and age, and a **📋 Logs** button streams `kubectl logs -f` into a terminal (container picker for multi-container pods)
+- **List Pods / List Deployments** for a namespace; pods show restarts and age. Per pod, **📋 Logs** streams `kubectl logs -f` and **⌨ Shell** opens `kubectl exec -it … -- sh` in a terminal (container picker for multi-container pods; shells on production clusters ask for confirmation)
 - **Port Forward** to `svc/…`, `pod/…` or `deploy/…`; running forwards can be stopped individually or all at once from the Command Palette
 - **Helm Releases** and **Helm History** (requires `helm` in `PATH`)
 - **Permissions (RBAC):** `kubectl auth can-i --list` for a namespace, or check a single verb/resource
@@ -43,7 +43,7 @@ A VS Code extension for managing multiple Kubernetes clusters with isolated kube
 ### Security
 - All kubeconfig data is stored in VS Code's encrypted `SecretStorage` (local; only leaves the machine encrypted, via export or GitHub Sync)
 - Optional password lock: prompt for a password when the extension opens, plus **auto-lock** after inactivity (`kubectl-control.autoLockMinutes`). While locked, every action is blocked and background status checks pause; repeated wrong passwords trigger a growing lockout
-- **Credential plugins need your approval:** a kubeconfig with `users[].user.exec` or an `auth-provider` (e.g. `aws eks get-token`, `gke-gcloud-auth-plugin`, `kubelogin`) makes kubectl run a program on your machine. The extension shows the exact command and asks once before first use; approvals are stored per machine, never exported or synced, and asked again if the command changes. Contexts imported from your own `~/.kube/config` count as approved
+- **Credential plugins need your approval:** a kubeconfig with `users[].user.exec` or an `auth-provider` (e.g. `aws eks get-token`, `gke-gcloud-auth-plugin`, `kubelogin`) makes kubectl run a program on your machine. The extension shows the exact command and asks once before first use; approvals are stored per machine, never exported or synced, and asked again if the command changes. Contexts imported from your own `~/.kube/config` count as approved. Review, approve or revoke approvals via Settings menu (⚙) ▸ *Credential Plugin Approvals*
 - New passwords (lock, export, sync) need at least **12 characters**
 - Exports are always AES-256-GCM encrypted with a user-chosen password (PBKDF2, 200,000 iterations)
 - Temporary kubeconfig files are written with mode `0600` (directory `0700`) and deleted when the terminal closes
@@ -78,6 +78,7 @@ The CLUSTERS panel is hidden during setup and appears once setup is complete.
 | Import from ~/.kube/config | Import local kubectl contexts |
 | GitHub Sync | Set up, sync now, restore from GitHub, disable |
 | Switch Namespace | Change the namespace of a cluster |
+| Credential Plugin Approvals | Review, approve or revoke the exec/auth-provider commands of your connections |
 | Open Settings | VS Code settings of the extension (see [Settings](#settings)) |
 | Language | Cycles the UI language: Auto → English → German → Auto (see [Language](#language) below) |
 | Enable password lock | Prompt for a password on open |

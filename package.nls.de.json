@@ -32,5 +32,6 @@
   "config.language.enum.auto": "Anzeigesprache von VS Code übernehmen",
   "config.language.enum.en": "Englisch",
   "config.language.enum.de": "Deutsch",
-  "view.connectionsView.name": "Verbindungen"
+  "view.connectionsView.name": "Verbindungen",
+  "command.manageExecApprovals": "Kubectl Control: Freigaben für Credential-Plugins verwalten"
 }
