@@ -9,6 +9,13 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.4.10] – 2026-09-29
+
+### Fixed
+- **Helm Releases failed with "unknown flag: --context"** for every connection that has an
+  active context. helm calls the flag `--kube-context`; the context is now passed with the
+  right flag for each tool. ([src/kubectlExec.ts](src/kubectlExec.ts))
+
 ## [1.4.9] – 2026-09-29
 
 ### Changed
