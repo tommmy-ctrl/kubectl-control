@@ -10,6 +10,10 @@ export const de: Record<string, string> = {
     "Really delete cluster '{0}'?": "Cluster '{0}' wirklich löschen?",
     'No saved connections yet.': 'Keine gespeicherten Verbindungen vorhanden.',
     'Terminal already open – focusing': 'Terminal bereits geöffnet – wird fokussiert',
+    'No terminals are open for "{0}".': 'Für "{0}" sind keine Terminals geöffnet.',
+    'Filter Clusters': 'Cluster filtern',
+    'Filter by name, namespace, or group': 'Nach Name, Namespace oder Gruppe filtern',
+    'e.g. prod, staging, team-a…': 'z.B. prod, staging, team-a…',
     'Kubectl Control – Quick Switch': 'Kubectl Control – Quick Switch',
     'Select cluster…': 'Cluster auswählen…',
     'Kubectl Control – Switch Namespace: Select Cluster': 'Kubectl Control – Namespace wechseln: Cluster wählen',
@@ -55,8 +59,6 @@ export const de: Record<string, string> = {
     'Kubectl Control – Settings': 'Kubectl Control – Einstellungen',
     'Select action': 'Aktion wählen',
     'Set Export Password': 'Export-Passwort festlegen',
-    'Password to encrypt the export file (min. 6 characters)': 'Passwort zum Verschlüsseln der Exportdatei (min. 6 Zeichen)',
-    'At least 6 characters required': 'Mindestens 6 Zeichen erforderlich',
     'Confirm Password': 'Passwort bestätigen',
     'Repeat password': 'Passwort wiederholen',
     'Passwords do not match': 'Passwörter stimmen nicht überein',
@@ -64,7 +66,6 @@ export const de: Record<string, string> = {
     'Old Password': 'Altes Passwort',
     'Enter current password': 'Aktuelles Passwort eingeben',
     'New Password': 'Neues Passwort',
-    'New password (min. 6 characters)': 'Neues Passwort (min. 6 Zeichen)',
     'Confirm New Password': 'Neues Passwort bestätigen',
     'Password changed successfully.': 'Passwort erfolgreich geändert.',
     'Old password is incorrect.': 'Altes Passwort ist falsch.',
@@ -105,7 +106,6 @@ export const de: Record<string, string> = {
     '{0} connection(s) imported from ~/.kube/config, {1} already existed.':
         '{0} Verbindung(en) aus ~/.kube/config importiert, {1} bereits vorhanden.',
     'Set Password': 'Passwort festlegen',
-    'At least 6 characters': 'Mindestens 6 Zeichen',
     'Password protection enabled.': 'Passwort-Schutz aktiviert.',
 
     // ── gistSync.ts ──────────────────────────────────────────────────────────
@@ -127,20 +127,14 @@ export const de: Record<string, string> = {
     'GitHub Sync – Set Password': 'GitHub Sync – Passwort festlegen',
     'This password encrypts your connection data (min. 12 characters). Remember it — you will be asked for it once on each device.':
         'Dieses Passwort verschlüsselt deine Verbindungsdaten (min. 12 Zeichen). Merke es dir — es wird auf jedem Gerät einmalig abgefragt.',
-    'At least 12 characters': 'Mindestens 12 Zeichen',
     'GitHub sign-in failed. Please try again.': 'GitHub-Anmeldung fehlgeschlagen. Bitte erneut versuchen.',
     'kubectl-control GitHub Sync active — click to sync manually': 'kubectl-control GitHub Sync aktiv — klicken zum manuellen Sync',
 
     // ── features/rbacViewer.ts ───────────────────────────────────────────────
-    'Namespace must not be empty.': 'Namespace darf nicht leer sein.',
-    'Namespace must be at most {0} characters long.': 'Namespace darf maximal {0} Zeichen lang sein.',
-    'Namespace must comply with RFC1123 (lowercase letters, digits, hyphens).':
-        'Namespace muss RFC1123 entsprechen (Kleinbuchstaben, Ziffern, Bindestriche).',
     'No clusters configured.': 'Keine Cluster konfiguriert.',
     'Select cluster': 'Cluster auswählen',
     'Cluster …': 'Cluster …',
     'Namespace': 'Namespace',
-    'Enter namespace (RFC1123)': 'Namespace eingeben (RFC1123)',
     'kubectl auth can-i --list failed: {0}': 'kubectl auth can-i --list fehlgeschlagen: {0}',
     'Verb (e.g. get, list, delete)': 'Verb (z.B. get, list, delete)',
     'Enter kubectl verb': 'kubectl-Verb eingeben',
@@ -184,10 +178,24 @@ export const de: Record<string, string> = {
     '- Group: `{0}`\n': '- Gruppe: `{0}`\n',
     '\n⚠️ Production environment — changes take effect immediately\n': '\n⚠️ Produktionsumgebung — Änderungen wirken sich direkt aus\n',
     '\n⚠️ Cluster unreachable\n': '\n⚠️ Cluster nicht erreichbar\n',
+    'Client certificate': 'Client-Zertifikat',
+    'Token': 'Token',
+    '\n⛔ {0} expired on {1} — re-import the kubeconfig.\n': '\n⛔ {0} ist am {1} abgelaufen – kubeconfig neu importieren.\n',
+    '\n⏳ {0} expires on {1} (in {2} days).\n': '\n⏳ {0} läuft am {1} ab (in {2} Tagen).\n',
     '\n⚠️ Token expired or invalid — not authenticated. Re-import kubeconfig.\n':
         '\n⚠️ Token abgelaufen oder ungültig — nicht authentifiziert. Kubeconfig neu importieren.\n',
     "\n_Terminal is open_": '\n_Terminal ist geöffnet_',
+    '\n_{0} terminals are open_': '\n_{0} Terminals sind geöffnet_',
     'Open Terminal': 'Terminal öffnen',
+    'No clusters match "{0}"': 'Keine Cluster passen zu "{0}"',
+    'Click to clear filter': 'Klicken, um den Filter zu löschen',
+    'Clear Filter': 'Filter löschen',
+
+    // ── features/resourceViewer.ts ───────────────────────────────────────────
+    'Invalid pod name: "{0}"': 'Ungültiger Pod-Name: "{0}"',
+    'All containers (interleaved, prefixed)': 'Alle Container (verschachtelt, mit Präfix)',
+    'Logs for pod "{0}" — select container': 'Logs für Pod "{0}" — Container wählen',
+    'Select container…': 'Container auswählen…',
 
     // ── store.ts ─────────────────────────────────────────────────────────────
     'Invalid format': 'Ungültiges Format',
@@ -268,4 +276,56 @@ export const de: Record<string, string> = {
     'Save Changes': 'Änderungen speichern',
     'Invalid kubeconfig': 'Ungültiges kubeconfig',
     '{0} context{1} detected': '{0} Context{1} erkannt',
+
+    // ── execTrust.ts ─────────────────────────────────────────────────────────
+    '(kubeconfig could not be analyzed)': '(kubeconfig konnte nicht analysiert werden)',
+    'This kubeconfig uses a credential plugin (exec/auth-provider) that has not been approved yet. Open a terminal for this connection to review and approve it.': 'Diese kubeconfig verwendet ein Credential-Plugin (exec/auth-provider), das noch nicht freigegeben wurde. Öffne ein Terminal für diese Verbindung, um es zu prüfen und freizugeben.',
+    'Allow and continue': 'Erlauben und fortfahren',
+    'Connection "{0}" runs a program on this computer': 'Verbindung "{0}" führt ein Programm auf diesem Computer aus',
+    'This kubeconfig contains a credential plugin. kubectl will execute the following on your machine every time it connects:\n\n{0}\n\nOnly allow this if you trust where this kubeconfig came from.': 'Diese kubeconfig enthält ein Credential-Plugin. kubectl führt bei jeder Verbindung Folgendes auf deinem Rechner aus:\n\n{0}\n\nErlaube das nur, wenn du der Herkunft dieser kubeconfig vertraust.',
+    // ── treeDataProvider.ts (execTrust) ──────────────────────────────────────
+    '\n🛡️ Uses a credential plugin that has not been approved yet — open a terminal to review and approve it. Status checks are paused until then.\n': '\n🛡️ Verwendet ein noch nicht freigegebenes Credential-Plugin — Terminal öffnen, um es zu prüfen und freizugeben. Status-Checks pausieren bis dahin.\n',
+    '(+{0} more characters)': '(+{0} weitere Zeichen)',
+    'Connection "{0}" was blocked: its kubeconfig contains keys that differ only in upper/lower case (e.g. "Command" and "command"). Such a file can disguise which program kubectl would run. Please fix the kubeconfig.': 'Verbindung "{0}" wurde blockiert: Ihre kubeconfig enthält Schlüssel, die sich nur in Groß-/Kleinschreibung unterscheiden (z. B. "Command" und "command"). So eine Datei kann verschleiern, welches Programm kubectl ausführt. Bitte die kubeconfig korrigieren.',
+    // ── passwordPolicy.ts ────────────────────────────────────────────────────
+    'At least {0} characters required': 'Mindestens {0} Zeichen erforderlich',
+    'At least {0} characters': 'Mindestens {0} Zeichen',
+    'Password to encrypt the export file (min. {0} characters)': 'Passwort zum Verschlüsseln der Exportdatei (min. {0} Zeichen)',
+    'New password (min. {0} characters)': 'Neues Passwort (min. {0} Zeichen)',
+    'Open settings menu': 'Einstellungsmenü öffnen',
+    'Your lock password is shorter than {0} characters. Please choose a longer one via Settings menu (⚙) ▸ Change Password.': 'Dein Sperr-Passwort ist kürzer als {0} Zeichen. Bitte wähle ein längeres über das Einstellungsmenü (⚙) ▸ Passwort ändern.',
+    // ── execTrust.ts (manage approvals) / resourceViewer.ts (shell) ───────────
+    'Shell in pod "{0}" — select container': 'Shell im Pod "{0}" — Container auswählen',
+    'Open shell': 'Shell öffnen',
+    '⚠️ "{0}" is a production environment. Really open a shell in pod "{1}"?': '⚠️ "{0}" ist eine Produktionsumgebung. Wirklich eine Shell im Pod "{1}" öffnen?',
+    'None of your connections uses a credential plugin (exec/auth-provider).': 'Keine deiner Verbindungen verwendet ein Credential-Plugin (exec/auth-provider).',
+    'approved': 'freigegeben',
+    'not approved': 'nicht freigegeben',
+    'Credential Plugin Approvals': 'Freigaben für Credential-Plugins',
+    'Select a connection to approve or revoke its credential plugin': 'Verbindung wählen, um ihr Credential-Plugin freizugeben oder die Freigabe zu entziehen',
+    'Credential plugin for "{0}" approved.': 'Credential-Plugin für "{0}" freigegeben.',
+    'Revoke approval': 'Freigabe entziehen',
+    'Revoke the approval for "{0}"?': 'Freigabe für "{0}" entziehen?',
+    'kubectl will not run this command again until you approve it anew. Terminals that are already open keep running.': 'kubectl führt diesen Befehl erst wieder aus, wenn du ihn erneut freigibst. Bereits geöffnete Terminals laufen weiter.',
+    'Also affects (same command): {0}': 'Betrifft auch (gleicher Befehl): {0}',
+    'Approval revoked for: {0}': 'Freigabe entzogen für: {0}',
+    '$(shield) Credential Plugin Approvals': '$(shield) Freigaben für Credential-Plugins',
+    'Review, approve or revoke exec/auth-provider commands': 'exec/auth-provider-Befehle prüfen, freigeben oder entziehen',
+    // ── namespaceBrowser.ts (namespace picker) ──────────────────────────────
+    'current': 'aktuell',
+    '$(edit) Enter manually…': '$(edit) Manuell eingeben…',
+    '$(globe) All namespaces': '$(globe) Alle Namespaces',
+    'Select namespace (type to filter)': 'Namespace wählen (tippen zum Filtern)',
+    'Namespaces could not be listed — pick the current one or enter one manually': 'Namespaces konnten nicht gelesen werden — aktuellen wählen oder manuell eingeben',
+    'Invalid namespace (RFC 1123: lowercase letters, digits and hyphens, max. 63 characters)': 'Ungültiger Namespace (RFC 1123: Kleinbuchstaben, Ziffern und Bindestriche, max. 63 Zeichen)',
+    'Pods — {0}: select namespace': 'Pods — {0}: Namespace wählen',
+    'Deployments — {0}: select namespace': 'Deployments — {0}: Namespace wählen',
+    'all namespaces': 'alle Namespaces',
+    'Permissions (can-i) — {0}: select namespace': 'Berechtigungen (can-i) — {0}: Namespace wählen',
+    // ── resourceViewer.ts (loading feedback) ─────────────────────────────────
+    'Loading pods from "{0}" ({1})…': 'Pods von "{0}" ({1}) werden geladen…',
+    'Loading deployments from "{0}" ({1})…': 'Deployments von "{0}" ({1}) werden geladen…',
+    'Kubectl Control: loading {0}…': 'Kubectl Control: {0} werden geladen…',
+    // ── webviews/templates.ts (unlock progress) ──────────────────────────────
+    'Unlocking…': 'Wird entsperrt…',
 };

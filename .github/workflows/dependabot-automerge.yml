@@ -9,7 +9,10 @@ permissions:
 jobs:
   automerge:
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    # The PR author, not github.actor: actor is whoever triggered the latest event
+    # (e.g. a re-run or a push), so checking it could be satisfied on a PR that
+    # someone else authored once dependabot touched it.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
 
     steps:
       - name: Fetch Dependabot metadata
@@ -18,9 +21,12 @@ jobs:
 
       - name: Auto-merge patch and minor updates
         # Only auto-merge non-breaking updates (patch = bug fixes, minor = new features, no breaking changes)
+        # Only development tooling: production dependencies are bundled into the
+        # shipped extension, so their updates always get a human review.
         if: |
-          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
-          steps.meta.outputs.update-type == 'version-update:semver-minor'
+          steps.meta.outputs.dependency-type == 'direct:development' &&
+          (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+           steps.meta.outputs.update-type == 'version-update:semver-minor')
         # --merge (not --squash): the "Protect-main" branch ruleset only allows
         # merge-commit merges (allowed_merge_methods), so --squash is rejected.
         run: gh pr merge --auto --merge "$PR_URL"

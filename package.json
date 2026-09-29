@@ -1,8 +1,8 @@
 {
   "name": "kubectl-control",
   "displayName": "Kubectl Control",
-  "description": "Manage multiple Kubernetes clusters with isolated kubeconfig terminals, group support, and encrypted export/import.",
-  "version": "1.3.3",
+  "description": "Manage multiple Kubernetes clusters with isolated kubeconfig terminals, groups, pods/logs, port-forward, Helm and RBAC views, encrypted export/import and GitHub Sync, password lock.",
+  "version": "1.4.12",
   "author": "Tom Kölsch",
   "publisher": "tommmy-ctrl",
   "license": "MIT",
@@ -53,6 +53,26 @@
         "title": "%command.openTerminal%"
       },
       {
+        "command": "kubectl-control.openNewTerminal",
+        "title": "%command.openNewTerminal%",
+        "icon": "$(terminal-add)"
+      },
+      {
+        "command": "kubectl-control.closeAllTerminals",
+        "title": "%command.closeAllTerminals%",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "kubectl-control.filterClusters",
+        "title": "%command.filterClusters%",
+        "icon": "$(search)"
+      },
+      {
+        "command": "kubectl-control.clearClusterFilter",
+        "title": "%command.clearClusterFilter%",
+        "icon": "$(close)"
+      },
+      {
         "command": "kubectl-control.settingsMenu",
         "title": "%command.settingsMenu%",
         "icon": "$(gear)"
@@ -60,6 +80,11 @@
       {
         "command": "kubectl-control.quickSwitch",
         "title": "%command.quickSwitch%"
+      },
+      {
+        "command": "kubectl-control.manageExecApprovals",
+        "title": "%command.manageExecApprovals%",
+        "icon": "$(shield)"
       },
       {
         "command": "kubectl-control.showLogs",
@@ -208,9 +233,24 @@
           "command": "kubectl-control.settingsMenu",
           "when": "view == kubectl-control.connectionsView",
           "group": "navigation"
+        },
+        {
+          "command": "kubectl-control.filterClusters",
+          "when": "view == kubectl-control.clustersView && !kubectl-control.hasClusterFilter",
+          "group": "navigation"
+        },
+        {
+          "command": "kubectl-control.clearClusterFilter",
+          "when": "view == kubectl-control.clustersView && kubectl-control.hasClusterFilter",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
+        {
+          "command": "kubectl-control.openNewTerminal",
+          "when": "view == kubectl-control.clustersView && viewItem == cluster",
+          "group": "inline@0"
+        },
         {
           "command": "kubectl-control.editCluster",
           "when": "view == kubectl-control.clustersView && viewItem == cluster",
@@ -230,6 +270,11 @@
           "command": "kubectl-control.toggleProd",
           "when": "view == kubectl-control.clustersView && viewItem == cluster",
           "group": "1_actions@2"
+        },
+        {
+          "command": "kubectl-control.closeAllTerminals",
+          "when": "view == kubectl-control.clustersView && viewItem == cluster",
+          "group": "1_actions@3"
         },
         {
           "command": "kubectl-control.listPods",
@@ -274,22 +319,22 @@
     "@types/glob": "^9.0.0",
     "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.1",
-    "@types/node": "^26.1.0",
+    "@types/node": "^26.6.3",
     "@types/uuid": "^11.0.0",
     "@types/vscode": "^1.125.0",
-    "@typescript-eslint/eslint-plugin": "^8.62.1",
-    "@typescript-eslint/parser": "^8.61.1",
-    "@vscode/test-electron": "^3.0.0",
-    "eslint": "^10.6.0",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
+    "@vscode/test-electron": "^3.1.0",
+    "eslint": "^10.11.0",
     "glob": "^13.0.6",
-    "mocha": "^11.7.6",
+    "mocha": "^11.8.0",
     "ts-loader": "^9.6.2",
     "typescript": "^6.0.3",
-    "webpack": "^5.108.4",
-    "webpack-cli": "^7.2.1"
+    "webpack": "^5.111.1",
+    "webpack-cli": "^7.2.3"
   },
   "dependencies": {
-    "js-yaml": "^5.3.0",
-    "uuid": "^14.0.1"
+    "js-yaml": "^5.4.1",
+    "uuid": "^14.0.2"
   }
 }

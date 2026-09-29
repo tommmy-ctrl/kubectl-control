@@ -10,6 +10,9 @@ import { GistSyncService } from './gistSync';
 import { log } from './logger';
 import { fetchNamespaces, FALLBACK_NAMESPACES } from './features/namespaceBrowser';
 import { t, getLanguage } from './i18n';
+import { ensureUnlocked, registerGuardedCommand } from './commandGuard';
+import { ensureClusterExecTrusted, manageExecApprovals } from './execTrust';
+import { MIN_PASSWORD_LENGTH, validateNewPassword } from './passwordPolicy';
 
 export function registerCommands(
     context: vscode.ExtensionContext,
@@ -20,13 +23,7 @@ export function registerCommands(
     terminalManager: TerminalManager,
     gistSync: GistSyncService,
 ) {
-    const assertUnlocked = async (): Promise<boolean> => {
-        if (!await lockService.isEnabled()) { lockService.recordActivity(); return true; }
-        if (lockService.isUnlocked()) { lockService.recordActivity(); return true; }
-        await vscode.commands.executeCommand('kubectl-control.connectionsView.focus');
-        vscode.window.showWarningMessage(t('Kubectl Control is locked. Please unlock first.'));
-        return false;
-    };
+    const assertUnlocked = ensureUnlocked;
 
     const deleteClusterCmd = vscode.commands.registerCommand('kubectl-control.deleteCluster', async (item: ClusterTreeItem) => {
         if (!item) { return; }
@@ -65,6 +62,47 @@ export function registerCommands(
         await terminalManager.openOrFocus(item.profile);
     });
 
+    // "+" inline action on a cluster row: always opens an additional terminal,
+    // even if one (or more) is already open — unlike openTerminal, which focuses.
+    const openNewTerminalCmd = vscode.commands.registerCommand('kubectl-control.openNewTerminal', async (item: ClusterTreeItem) => {
+        if (!item) { return; }
+        if (!await assertUnlocked()) { return; }
+        await terminalManager.openAdditional(item.profile);
+    });
+
+    // Closes every open terminal for a cluster at once. No lock check — closing
+    // exposes nothing new, same as the other terminal-closing paths (e.g. deleteCluster).
+    const closeAllTerminalsCmd = vscode.commands.registerCommand('kubectl-control.closeAllTerminals', (item: ClusterTreeItem) => {
+        if (!item) { return; }
+        const count = terminalManager.openCount(item.profile.id);
+        if (count === 0) {
+            vscode.window.showInformationMessage(t('No terminals are open for "{0}".', item.profile.name));
+            return;
+        }
+        terminalManager.closeForCluster(item.profile.id);
+    });
+
+    // Search icon in the clustersView title bar: prompts for a name/namespace/group
+    // substring and filters the tree. Mirrors the filter back into the InputBox so it's
+    // editable, and tracks kubectl-control.hasClusterFilter so the title bar can swap
+    // between the "Filter" and "Clear Filter" icons (see package.json when-clauses).
+    const filterClustersCmd = registerGuardedCommand('kubectl-control.filterClusters', async () => {
+        const input = await vscode.window.showInputBox({
+            title: t('Filter Clusters'),
+            prompt: t('Filter by name, namespace, or group'),
+            value: treeProvider.getFilter(),
+            placeHolder: t('e.g. prod, staging, team-a…'),
+        });
+        if (input === undefined) { return; } // cancelled — leave the existing filter as-is
+        treeProvider.setFilter(input);
+        await vscode.commands.executeCommand('setContext', 'kubectl-control.hasClusterFilter', treeProvider.getFilter() !== '');
+    });
+
+    const clearClusterFilterCmd = registerGuardedCommand('kubectl-control.clearClusterFilter', async () => {
+        treeProvider.clearFilter();
+        await vscode.commands.executeCommand('setContext', 'kubectl-control.hasClusterFilter', false);
+    });
+
     // Quick-Switch: Ctrl+Shift+K — pick cluster from all saved, open/focus terminal
     const quickSwitchCmd = vscode.commands.registerCommand('kubectl-control.quickSwitch', async () => {
         if (!await assertUnlocked()) { return; }
@@ -87,8 +125,15 @@ export function registerCommands(
         if (pick) { await terminalManager.openOrFocus(pick.cluster); }
     });
 
+    // Deliberately NOT lock-guarded: the log is what you need when unlocking misbehaves,
+    // and it never contains kubeconfigs or passwords.
     const showLogsCmd = vscode.commands.registerCommand('kubectl-control.showLogs', () => {
         log.show();
+    });
+
+    const manageExecApprovalsCmd = registerGuardedCommand('kubectl-control.manageExecApprovals', async () => {
+        await manageExecApprovals(store);
+        treeProvider.refresh();
     });
 
     const switchNamespaceCmd = vscode.commands.registerCommand('kubectl-control.switchNamespace', async () => {
@@ -112,6 +157,8 @@ export function registerCommands(
 
         const cluster = clusterPick.cluster;
         const currentNs = cluster.namespace ?? 'default';
+        // Listing namespaces runs kubectl, i.e. the kubeconfig's credential plugin.
+        if (!await ensureClusterExecTrusted(store, cluster)) { return; }
 
         const liveNamespaces = await vscode.window.withProgress(
             { location: vscode.ProgressLocation.Notification, title: t('Loading namespaces…'), cancellable: false },
@@ -145,7 +192,7 @@ export function registerCommands(
         treeProvider.refresh();
     });
 
-    const togglePinCmd = vscode.commands.registerCommand('kubectl-control.togglePin', async (item: ClusterTreeItem) => {
+    const togglePinCmd = registerGuardedCommand('kubectl-control.togglePin', async (item: ClusterTreeItem) => {
         if (!item) { return; }
         const newPinned = !item.profile.pinned;
         await store.updateCluster(item.profile.id, { pinned: newPinned });
@@ -157,7 +204,7 @@ export function registerCommands(
         }
     });
 
-    const toggleProdCmd = vscode.commands.registerCommand('kubectl-control.toggleProd', async (item: ClusterTreeItem) => {
+    const toggleProdCmd = registerGuardedCommand('kubectl-control.toggleProd', async (item: ClusterTreeItem) => {
         if (!item) { return; }
         const newIsProd = !item.profile.isProd;
         await store.updateCluster(item.profile.id, { isProd: newIsProd });
@@ -222,6 +269,7 @@ export function registerCommands(
             { kind: vscode.QuickPickItemKind.Separator, label: t('Settings'), action: '' },
             { label: t('$(globe) Language: {0}', languageLabel), description: t('Click to switch: Auto → English → German'), action: 'cycle-language' },
             { label: t('$(settings-gear) Open Settings'), description: t('Auto-lock, status interval, terminal prompt …'), action: 'vscode-settings' },
+            { label: t('$(shield) Credential Plugin Approvals'), description: t('Review, approve or revoke exec/auth-provider commands'), action: 'exec-approvals' },
             { label: t('$(output) Show Debug Logs'), description: t('Open the Output panel with logs'), action: 'logs' },
             { label: t('$(trash) Reset Application'), description: t('Delete all connections and settings'), action: 'reset' }
         );
@@ -231,6 +279,12 @@ export function registerCommands(
             placeHolder: t('Select action')
         });
         if (!pick) { return; }
+
+        // SECURITY: these actions read, export or replace connection data and must not
+        // work while locked (export used to hand out every kubeconfig without unlocking).
+        // 'reset' stays available as the forgotten-password escape hatch; it only deletes.
+        const needsUnlock = new Set(['export', 'import', 'import-kubeconfig', 'sync-setup', 'sync-now', 'sync-restore', 'sync-disable', 'exec-approvals']);
+        if (needsUnlock.has(pick.action) && !await assertUnlocked()) { return; }
 
         switch (pick.action) {
             case 'export':            await handleExport(store); break;
@@ -248,17 +302,19 @@ export function registerCommands(
             case 'cycle-language': await cycleLanguage(); break;
             case 'vscode-settings': await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:tommmy-ctrl.kubectl-control'); break;
             case 'logs':         log.show(); break;
+            case 'exec-approvals': await manageExecApprovals(store); treeProvider.refresh(); break;
             case 'reset':        await handleReset(context, store, lockService, treeProvider, connectionsView); break;
         }
     });
 
     context.subscriptions.push(
-        deleteClusterCmd, editClusterCmd, openTerminalCmd,
-        quickSwitchCmd, showLogsCmd, settingsMenuCmd,
+        deleteClusterCmd, editClusterCmd, openTerminalCmd, openNewTerminalCmd, closeAllTerminalsCmd,
+        filterClustersCmd, clearClusterFilterCmd,
+        quickSwitchCmd, showLogsCmd, manageExecApprovalsCmd, settingsMenuCmd,
         switchNamespaceCmd, togglePinCmd, toggleProdCmd,
-        vscode.commands.registerCommand('kubectl-control.syncNow',     () => void gistSync.setupOrPush().catch(e => log.error(`syncNow failed: ${e}`))),
-        vscode.commands.registerCommand('kubectl-control.syncRestore', () => void gistSync.pull().catch(e => log.error(`syncRestore failed: ${e}`))),
-        vscode.commands.registerCommand('kubectl-control.syncDisable', () => void gistSync.disable().catch(e => log.error(`syncDisable failed: ${e}`))),
+        registerGuardedCommand('kubectl-control.syncNow',     () => void gistSync.setupOrPush().catch(e => log.error(`syncNow failed: ${e}`))),
+        registerGuardedCommand('kubectl-control.syncRestore', () => void gistSync.pull().catch(e => log.error(`syncRestore failed: ${e}`))),
+        registerGuardedCommand('kubectl-control.syncDisable', () => void gistSync.disable().catch(e => log.error(`syncDisable failed: ${e}`))),
     );
 }
 
@@ -275,8 +331,8 @@ async function handleExport(store: ClusterStore): Promise<void> {
     const password = await vscode.window.showInputBox({
         title: t('Set Export Password'),
         password: true,
-        prompt: t('Password to encrypt the export file (min. 6 characters)'),
-        validateInput: v => (!v || v.length < 6) ? t('At least 6 characters required') : undefined
+        prompt: t('Password to encrypt the export file (min. {0} characters)', MIN_PASSWORD_LENGTH),
+        validateInput: validateNewPassword
     });
     if (password === undefined) { return; }
 
@@ -315,8 +371,8 @@ async function handleChangePassword(lockService: LockService): Promise<void> {
     const newPwd = await vscode.window.showInputBox({
         title: t('New Password'),
         password: true,
-        prompt: t('New password (min. 6 characters)'),
-        validateInput: v => (!v || v.length < 6) ? t('At least 6 characters required') : undefined
+        prompt: t('New password (min. {0} characters)', MIN_PASSWORD_LENGTH),
+        validateInput: validateNewPassword
     });
     if (newPwd === undefined) { return; }
 

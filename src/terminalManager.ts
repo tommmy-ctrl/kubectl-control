@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
-import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { ClusterProfile, ClusterStore, ShellType } from './store';
 import { log } from './logger';
 import { t } from './i18n';
-import { TEMP_DIR, ensureTempDir } from './kubectlExec';
+import { ensureTempDir, tempKubeconfigPath, cleanupOrphanedTempFiles } from './kubectlExec';
+import { assertKubeconfigAllowed, ensureClusterExecTrusted } from './execTrust';
 
 // On Windows, prefer Git Bash if present; fall back to undefined (VS Code default shell) so the terminal still opens.
 function resolveShellPath(shell: ShellType): string | undefined {
@@ -117,8 +117,9 @@ export function buildPromptCommand(name: string, shell: ShellType | undefined, c
 }
 
 export class TerminalManager implements vscode.Disposable {
-    private readonly openTerminals = new Map<string, vscode.Terminal>();
-    private readonly terminalOpenedAt = new Map<string, number>();
+    // Multiple terminals can be open per cluster at once; order = open order (oldest first).
+    private readonly openTerminals = new Map<string, vscode.Terminal[]>();
+    private readonly terminalOpenedAt = new Map<vscode.Terminal, number>();
     private readonly _onDidChange = new vscode.EventEmitter<void>();
     readonly onDidChange: vscode.Event<void> = this._onDidChange.event;
     private _kubectlAvailable?: boolean;
@@ -130,25 +131,33 @@ export class TerminalManager implements vscode.Disposable {
     constructor(private readonly store: ClusterStore) {
 
         this._disposables.push(vscode.window.onDidCloseTerminal(terminal => {
-            for (const [id, t] of this.openTerminals) {
-                if (t === terminal) {
-                    const openedAt = this.terminalOpenedAt.get(id);
+            const openedAt = this.terminalOpenedAt.get(terminal);
+            this.terminalOpenedAt.delete(terminal);
+
+            for (const [id, terminals] of this.openTerminals) {
+                const idx = terminals.indexOf(terminal);
+                if (idx === -1) { continue; }
+
+                terminals.splice(idx, 1);
+                log.info(`Terminal closed for cluster id=${id} (${terminals.length} remaining)`);
+                this._onDidChange.fire();
+
+                // Only tear down cluster-level state once the LAST terminal for it closes —
+                // other terminals for the same cluster are still using the temp kubeconfig.
+                if (terminals.length === 0) {
                     this.openTerminals.delete(id);
-                    this.terminalOpenedAt.delete(id);
-                    log.info(`Terminal closed for cluster id=${id}`);
-                    this._onDidChange.fire();
                     void this.deleteTempFile(id);
 
                     if (id === this._activeClusterId) {
                         this._activeClusterId = undefined;
                         this._onActiveChange.fire(undefined);
                     }
-
-                    if (process.platform === 'win32' && openedAt && Date.now() - openedAt < 3000) {
-                        void this.showConptyError();
-                    }
-                    break;
                 }
+
+                if (process.platform === 'win32' && openedAt && Date.now() - openedAt < 3000) {
+                    void this.showConptyError();
+                }
+                break;
             }
         }));
     }
@@ -185,16 +194,21 @@ export class TerminalManager implements vscode.Disposable {
     }
 
     isOpen(clusterId: string): boolean {
-        return this.openTerminals.has(clusterId);
+        return (this.openTerminals.get(clusterId)?.length ?? 0) > 0;
+    }
+
+    /** Number of terminals currently open for a cluster. */
+    openCount(clusterId: string): number {
+        return this.openTerminals.get(clusterId)?.length ?? 0;
     }
 
     getOpenClusterIds(): string[] {
         return [...this.openTerminals.keys()];
     }
 
+    /** Sends text to every open terminal for the cluster (e.g. namespace switches apply to all of them). */
     sendToTerminal(clusterId: string, text: string): void {
-        const terminal = this.openTerminals.get(clusterId);
-        if (terminal) {
+        for (const terminal of this.openTerminals.get(clusterId) ?? []) {
             terminal.sendText(text);
         }
     }
@@ -202,10 +216,10 @@ export class TerminalManager implements vscode.Disposable {
     /** Close any open terminal(s) for the given cluster id. The existing
      *  onDidCloseTerminal handler performs map cleanup and temp-file deletion. */
     public closeForCluster(clusterId: string): void {
-        const terminal = this.openTerminals.get(clusterId);
-        if (terminal) {
-            log.info(`Closing terminal for cluster id=${clusterId} (connection deleted)`);
-            terminal.dispose();
+        const terminals = this.openTerminals.get(clusterId);
+        if (terminals) {
+            log.info(`Closing ${terminals.length} terminal(s) for cluster id=${clusterId} (connection deleted)`);
+            for (const terminal of terminals) { terminal.dispose(); }
         }
     }
 
@@ -213,20 +227,36 @@ export class TerminalManager implements vscode.Disposable {
         return this._activeClusterId;
     }
 
-    /** Focus existing terminal or open a new one. */
+    /** Focus the most recently opened terminal for a cluster, or open the first one. */
     async openOrFocus(profile: ClusterProfile): Promise<void> {
         const existing = this.openTerminals.get(profile.id);
-        if (existing) {
+        if (existing && existing.length > 0) {
             log.info(`Focusing existing terminal for "${profile.name}"`);
-            existing.show();
+            existing[existing.length - 1].show();
             this._activeClusterId = profile.id;
             this._onActiveChange.fire(profile.id);
             await this.store.updateCluster(profile.id, { lastUsed: Date.now() });
             return;
         }
+        await this.openAdditional(profile);
+    }
+
+    /** Always opens a new terminal for the cluster, even if one (or more) is already open. */
+    async openAdditional(profile: ClusterProfile): Promise<void> {
+        if (!await this.canOpenTerminal(profile)) { return; }
+        await this.openNew(profile);
+        this._activeClusterId = profile.id;
+        this._onActiveChange.fire(profile.id);
+        await this.store.updateCluster(profile.id, { lastUsed: Date.now() });
+    }
+
+    /** kubectl-availability check + production confirmation, shared by every path that opens a new terminal. */
+    private async canOpenTerminal(profile: ClusterProfile): Promise<boolean> {
+        // SECURITY: kubectl in this terminal would run the kubeconfig's credential plugin.
+        if (!await ensureClusterExecTrusted(this.store, profile)) { return false; }
         if (!await this.isKubectlAvailable()) {
             const { openAnyway } = await this.showKubectlMissingWarning();
-            if (!openAnyway) { return; }
+            if (!openAnyway) { return false; }
         }
         if (profile.isProd) {
             const btnOeffnen = t('Open');
@@ -235,12 +265,9 @@ export class TerminalManager implements vscode.Disposable {
                 { modal: true },
                 btnOeffnen,
             );
-            if (confirm !== btnOeffnen) { return; }
+            if (confirm !== btnOeffnen) { return false; }
         }
-        await this.openNew(profile);
-        this._activeClusterId = profile.id;
-        this._onActiveChange.fire(profile.id);
-        await this.store.updateCluster(profile.id, { lastUsed: Date.now() });
+        return true;
     }
 
     private async isKubectlAvailable(): Promise<boolean> {
@@ -249,11 +276,12 @@ export class TerminalManager implements vscode.Disposable {
         if (this._kubectlAvailable === true) {
             return true;
         }
-        const { exec } = await import('node:child_process');
+        const { execFile } = await import('node:child_process');
         const { promisify } = await import('node:util');
-        const execAsync = promisify(exec);
+        const execFileAsync = promisify(execFile);
         try {
-            await execAsync('kubectl version --client --output=json');
+            // SECURITY: execFile with an argument array — no shell involved.
+            await execFileAsync('kubectl', ['version', '--client', '--output=json'], { timeout: 5000 });
             this._kubectlAvailable = true;
             return true;
         } catch (e: unknown) {
@@ -285,11 +313,15 @@ export class TerminalManager implements vscode.Disposable {
     }
 
     private tempFilePath(clusterId: string): string {
-        return path.join(TEMP_DIR, `kubeconfig-${clusterId}.yaml`);
+        // Per window (PID) and cluster: terminals of the same cluster in THIS window share
+        // it, but another window never overwrites or deletes it.
+        return tempKubeconfigPath('term', clusterId);
     }
 
     private async openNew(profile: ClusterProfile): Promise<void> {
         try {
+            // SECURITY: defence in depth — canOpenTerminal() already asked for approval.
+            assertKubeconfigAllowed(profile.kubeconfigData);
             await ensureTempDir();
 
             const kubeconfigPath = this.tempFilePath(profile.id);
@@ -297,8 +329,13 @@ export class TerminalManager implements vscode.Disposable {
 
             const shellPath = profile.shell ? resolveShellPath(profile.shell) : undefined;
 
+            // Number the tab (e.g. "(2)") once a second+ terminal is opened for the same cluster,
+            // so they're distinguishable in the terminal panel.
+            const openCount = this.openTerminals.get(profile.id)?.length ?? 0;
+            const name = openCount > 0 ? `☸ ${profile.name} (${openCount + 1})` : `☸ ${profile.name}`;
+
             const terminal = vscode.window.createTerminal({
-                name: `☸ ${profile.name}`,
+                name,
                 shellPath,
                 env: {
                     // eslint-disable-next-line @typescript-eslint/naming-convention
@@ -350,11 +387,13 @@ export class TerminalManager implements vscode.Disposable {
                 terminal.sendText(`echo "${t('⚠️  WARNING: This is a PRODUCTION ENVIRONMENT ({0}). Changes take effect immediately.', safeName)}"`);
             }
 
-            this.openTerminals.set(profile.id, terminal);
-            this.terminalOpenedAt.set(profile.id, Date.now());
+            const terminals = this.openTerminals.get(profile.id) ?? [];
+            terminals.push(terminal);
+            this.openTerminals.set(profile.id, terminals);
+            this.terminalOpenedAt.set(terminal, Date.now());
             terminal.show();
             this._onDidChange.fire();
-            log.info(`Terminal opened for "${profile.name}" (shell=${profile.shell ?? 'default'})`);
+            log.info(`Terminal opened for "${profile.name}" (shell=${profile.shell ?? 'default'}, ${terminals.length} open)`);
         } catch (e) {
             log.error(`Failed to open terminal for "${profile.name}"`, e);
             vscode.window.showErrorMessage(t('Terminal could not be opened: {0}', String(e)));
@@ -362,18 +401,9 @@ export class TerminalManager implements vscode.Disposable {
     }
 
     async cleanupOrphanedTempFiles(): Promise<void> {
-        try {
-            const entries = await fs.readdir(TEMP_DIR);
-            await Promise.all(
-                entries
-                    .filter(f => f.startsWith('kubeconfig-') && f.endsWith('.yaml'))
-                    .map(f => fs.unlink(path.join(TEMP_DIR, f)).catch(() => undefined)),
-            );
-            if (entries.length > 0) {
-                log.info(`Cleaned up ${entries.length} orphaned temp kubeconfig file(s)`);
-            }
-        } catch {
-            // Directory doesn't exist yet — nothing to clean
+        const removed = await cleanupOrphanedTempFiles();
+        if (removed > 0) {
+            log.info(`Cleaned up ${removed} orphaned temp kubeconfig file(s)`);
         }
     }
 

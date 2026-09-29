@@ -3,6 +3,7 @@ import { ClusterStore } from './store';
 import { log } from './logger';
 import { encryptData, decryptData, EncryptedFile } from './crypto';
 import { t } from './i18n';
+import { validateNewPassword } from './passwordPolicy';
 
 const GIST_ID_KEY        = 'kubectl-control.sync.gistId';
 const SYNC_PWD_KEY       = 'kubectl-control.sync.password';
@@ -209,7 +210,7 @@ export class GistSyncService implements vscode.Disposable {
             title: t('GitHub Sync – Set Password'),
             prompt: t('This password encrypts your connection data (min. 12 characters). Remember it — you will be asked for it once on each device.'),
             password: true,
-            validateInput: v => (!v || v.length < 12) ? t('At least 12 characters') : undefined,
+            validateInput: validateNewPassword,
         });
         if (!password) { return undefined; }
 

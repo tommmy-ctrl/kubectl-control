@@ -4,10 +4,11 @@ import { TerminalManager } from './terminalManager';
 import { LockService } from './lockService';
 import { ClusterStatusService, ClusterStatus } from './clusterStatus';
 import { t } from './i18n';
+import { getCredentialExpiry, expiryState, daysUntil } from './credentialExpiry';
 
 // ── Tree node union type ──────────────────────────────────────────────────────
 
-export type ClusterTreeNode = ClusterGroupItem | ClusterTreeItem | LockedItem;
+export type ClusterTreeNode = ClusterGroupItem | ClusterTreeItem | LockedItem | NoMatchesItem;
 
 // ── Group item ────────────────────────────────────────────────────────────────
 
@@ -31,26 +32,49 @@ export class ClusterGroupItem extends vscode.TreeItem {
 export class ClusterTreeItem extends vscode.TreeItem {
     constructor(
         public readonly profile: ClusterProfile,
-        hasTerminal: boolean,
+        terminalCount: number,
         status: ClusterStatus = 'unknown',
     ) {
         super(profile.name, vscode.TreeItemCollapsibleState.None);
         this.id = profile.id;
 
+        const hasTerminal = terminalCount > 0;
         const ns = profile.namespace ?? 'default';
 
-        // Build description: prod marker first, then ns, then terminal indicator, then status
+        // Build description: prod marker first, then ns, then terminal indicator (●, or ●×N
+        // once more than one terminal is open for this cluster), then status
         let desc = '';
         if (profile.isProd === true) {
             desc += '🔴 ';
         }
-        desc += hasTerminal ? `${ns}  ●` : ns;
+        desc += ns;
+        if (hasTerminal) {
+            desc += terminalCount > 1 ? `  ●×${terminalCount}` : '  ●';
+        }
         if (status === 'reachable') {
             desc += ' 🟢';
         } else if (status === 'unreachable') {
             desc += ' 🔴';
         } else if (status === 'unauthorized') {
             desc += ' 🟡';
+        } else if (status === 'untrusted') {
+            desc += ' 🛡️';
+        }
+        // Credential expiry read from the kubeconfig (client certificate / JWT token).
+        const expiry = getCredentialExpiry(profile.kubeconfigData, profile.activeContext);
+        const expState = expiry ? expiryState(expiry) : 'ok';
+        let expiryLine = '';
+        if (expiry && expState !== 'ok') {
+            const date = expiry.expiresAt.toISOString().slice(0, 10);
+            const days = daysUntil(expiry.expiresAt);
+            const what = expiry.kind === 'certificate' ? t('Client certificate') : t('Token');
+            if (expState === 'expired') {
+                desc += ' ⛔';
+                expiryLine = t('\n⛔ {0} expired on {1} — re-import the kubeconfig.\n', what, date);
+            } else {
+                desc += ` ⏳${days}d`;
+                expiryLine = t('\n⏳ {0} expires on {1} (in {2} days).\n', what, date, days);
+            }
         }
         this.description = desc;
 
@@ -63,7 +87,10 @@ export class ClusterTreeItem extends vscode.TreeItem {
             (profile.isProd ? t('\n⚠️ Production environment — changes take effect immediately\n') : '') +
             (status === 'unreachable' ? t('\n⚠️ Cluster unreachable\n') : '') +
             (status === 'unauthorized' ? t('\n⚠️ Token expired or invalid — not authenticated. Re-import kubeconfig.\n') : '') +
-            (hasTerminal ? t('\n_Terminal is open_') : '');
+            expiryLine +
+            (status === 'untrusted' ? t('\n🛡️ Uses a credential plugin that has not been approved yet — open a terminal to review and approve it. Status checks are paused until then.\n') : '') +
+            (terminalCount > 1 ? t('\n_{0} terminals are open_', terminalCount)
+                : hasTerminal ? t('\n_Terminal is open_') : '');
         this.tooltip = new vscode.MarkdownString(tooltipLines);
 
         if (profile.isProd === true && !hasTerminal) {
@@ -101,6 +128,21 @@ export class LockedItem extends vscode.TreeItem {
     }
 }
 
+// ── No-matches placeholder ────────────────────────────────────────────────────
+
+export class NoMatchesItem extends vscode.TreeItem {
+    constructor(filter: string) {
+        super(t('No clusters match "{0}"', filter), vscode.TreeItemCollapsibleState.None);
+        this.description = t('Click to clear filter');
+        this.iconPath = new vscode.ThemeIcon('circle-slash');
+        this.contextValue = 'noMatches';
+        this.command = {
+            command: 'kubectl-control.clearClusterFilter',
+            title: t('Clear Filter'),
+        };
+    }
+}
+
 // ── Sort helpers ──────────────────────────────────────────────────────────────
 
 function sortClusters(clusters: ClusterProfile[]): ClusterProfile[] {
@@ -121,6 +163,7 @@ function sortClusters(clusters: ClusterProfile[]): ClusterProfile[] {
 export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterTreeNode> {
     private readonly _onDidChangeTreeData = new vscode.EventEmitter<ClusterTreeNode | undefined | null | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+    private _filter = '';
 
     constructor(
         private readonly store: ClusterStore,
@@ -139,6 +182,21 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
         this._onDidChangeTreeData.fire();
     }
 
+    /** Current filter text (raw, as typed — not lowercased). Empty string = no filter. */
+    getFilter(): string {
+        return this._filter;
+    }
+
+    /** Sets the cluster name/namespace/group substring filter (case-insensitive) and refreshes. */
+    setFilter(text: string): void {
+        this._filter = text.trim();
+        this.refresh();
+    }
+
+    clearFilter(): void {
+        this.setFilter('');
+    }
+
     getTreeItem(element: ClusterTreeNode): vscode.TreeItem {
         return element;
     }
@@ -149,7 +207,7 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
             const sorted = sortClusters(element.clusters);
             return sorted.map(c => new ClusterTreeItem(
                 c,
-                this.terminalManager.isOpen(c.id),
+                this.terminalManager.openCount(c.id),
                 this.clusterStatusService?.getStatus(c.id) ?? 'unknown',
             ));
         }
@@ -160,7 +218,20 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
         }
 
         // Root level: build group structure
-        const clusters = await this.store.getClusters();
+        let clusters = await this.store.getClusters();
+
+        // Filter by name / namespace / group (case-insensitive substring), if set.
+        if (this._filter) {
+            const needle = this._filter.toLowerCase();
+            clusters = clusters.filter(c =>
+                c.name.toLowerCase().includes(needle) ||
+                (c.namespace ?? '').toLowerCase().includes(needle) ||
+                (c.group ?? '').toLowerCase().includes(needle));
+            if (clusters.length === 0) {
+                return [new NoMatchesItem(this._filter)];
+            }
+        }
+
         const grouped = new Map<string, ClusterProfile[]>();
         const ungrouped: ClusterProfile[] = [];
 
@@ -187,7 +258,7 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
         for (const c of sortedUngrouped) {
             nodes.push(new ClusterTreeItem(
                 c,
-                this.terminalManager.isOpen(c.id),
+                this.terminalManager.openCount(c.id),
                 this.clusterStatusService?.getStatus(c.id) ?? 'unknown',
             ));
         }

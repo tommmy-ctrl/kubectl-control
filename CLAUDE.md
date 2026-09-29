@@ -115,14 +115,25 @@ Full playbook: [docs/RELEASE.md](docs/RELEASE.md).
   pre-release** with a `.vsix` (no Marketplace, **no** auto-update on manual sideload).
 - Feature work on `feature/*` → PR to `beta`.
 - **Beta → Prod** via the `promote` workflow (or manually: merge `beta` into `main` +
-  set tag `vX.Y.Z`). The final tag triggers the Marketplace publish.
-- Versioning scheme: **strict SemVer** with no special rules. `package.json` carries the
-  target stable version `X.Y.Z` (VS Code requires this field to stay a bare `X.Y.Z`, no
-  suffix); beta vs. stable is distinguished **only** by the tag: beta = `beta-vX.Y.Z`
-  (GitHub only, updated in place on every push to `beta`), stable = `vX.Y.Z` (Marketplace).
-  No even/odd MINOR rule. To identify which commit a running beta build came from, check
-  the short commit SHA shown next to the version in the connection form's footer (baked in
+  set tag `vX.Y.0`). The final tag triggers the Marketplace publish.
+- **Marketplace pre-release (occasional, deliberate — not the default path):** tag `vX.Y.Z-pre`
+  (`Z ≥ 1`, same number as the current beta dev round) pushed directly from a `beta` commit (no
+  promote to `main` needed) triggers `release.yml` in pre-release mode
+  (`vsce publish --pre-release`). Unlike the GitHub-only `beta-vX.Y.Z` channel, this *does* show
+  up in Marketplace search and *does* auto-update, but only for users who opted into
+  "Switch to Pre-Release Version". See [docs/RELEASE.md](docs/RELEASE.md) §1b.
+- **Versioning scheme — one project-specific rule on top of SemVer: stable is always `X.Y.0`;
+  every beta/pre-release dev round is `X.Y.Z` with `Z ≥ 1`, promoting to the next unused `X.Y.0`
+  (never to the round's own number).** This is not the even/odd-MINOR convention (no parity
+  rule; it's PATCH, not MINOR) — it exists so a version number never has to serve both as a dev
+  round *and* the eventual stable release, which is what caused the `1.3.0`–`1.3.2` incident (see
+  CHANGELOG `1.2.1`/`1.3.3`). `package.json` on `beta` carries the dev round's own `X.Y.Z`
+  directly and is expected to change between rounds (bump `Z` for each round a tester will
+  actually download). The three channels are distinguished by the tag: GitHub-only beta =
+  `beta-vX.Y.Z` (updated in place on same-round pushes), Marketplace pre-release = `vX.Y.Z-pre`,
+  stable = `vX.Y.0` (Marketplace). To identify which commit a running beta build came from,
+  check the short commit SHA shown next to the version in the connection form's footer (baked in
   at build time — see [src/webviews/templates.ts](src/webviews/templates.ts) and
-  [webpack.config.js](webpack.config.js)).
+  [webpack.config.js](webpack.config.js)). Full rationale: [docs/RELEASE.md](docs/RELEASE.md).
 
 See code standards: [CONTRIBUTING.md](CONTRIBUTING.md).

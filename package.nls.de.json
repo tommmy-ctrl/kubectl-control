@@ -3,6 +3,10 @@
   "command.deleteCluster": "Verbindung löschen",
   "command.editCluster": "Verbindung bearbeiten",
   "command.openTerminal": "Terminal öffnen",
+  "command.openNewTerminal": "Neues Terminal öffnen",
+  "command.closeAllTerminals": "Alle Terminals schließen",
+  "command.filterClusters": "Cluster filtern",
+  "command.clearClusterFilter": "Filter löschen",
   "command.settingsMenu": "Einstellungen",
   "command.quickSwitch": "Kubectl Control: Quick Switch Cluster",
   "command.showLogs": "Kubectl Control: Debug-Logs anzeigen",
@@ -28,5 +32,6 @@
   "config.language.enum.auto": "Anzeigesprache von VS Code übernehmen",
   "config.language.enum.en": "Englisch",
   "config.language.enum.de": "Deutsch",
-  "view.connectionsView.name": "Verbindungen"
+  "view.connectionsView.name": "Verbindungen",
+  "command.manageExecApprovals": "Kubectl Control: Freigaben für Credential-Plugins verwalten"
 }

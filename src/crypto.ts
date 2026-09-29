@@ -63,3 +63,17 @@ export function deriveHash(password: string, salt: string): string {
     const saltBytes = new TextEncoder().encode(salt);
     return toHex(nodeCrypto.pbkdf2Sync(password, saltBytes, ITERATIONS, 32, DIGEST));
 }
+
+/**
+ * Same result as deriveHash(), computed on libuv's thread pool: 200,000 PBKDF2
+ * iterations block the extension host for a noticeable time on slower (remote)
+ * machines, freezing every other extension and the UI feedback meanwhile.
+ */
+export function deriveHashAsync(password: string, salt: string): Promise<string> {
+    const saltBytes = new TextEncoder().encode(salt);
+    return new Promise((resolve, reject) => {
+        nodeCrypto.pbkdf2(password, saltBytes, ITERATIONS, 32, DIGEST, (err, key) => {
+            if (err) { reject(err); } else { resolve(toHex(key)); }
+        });
+    });
+}

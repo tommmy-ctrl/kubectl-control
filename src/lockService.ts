@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as nodeCrypto from 'node:crypto';
-import { deriveHash } from './crypto';
+import { deriveHashAsync } from './crypto';
 import { log } from './logger';
 
 const ENABLED_KEY = 'kubectl-control.lock.enabled';
@@ -67,7 +67,7 @@ export class LockService {
 
     async enableLock(password: string): Promise<void> {
         const salt = nodeCrypto.randomBytes(32).toString('hex');
-        const hash = deriveHash(password, salt);
+        const hash = await deriveHashAsync(password, salt);
         await this.secrets.store(SALT_KEY, salt);
         await this.secrets.store(HASH_KEY, hash);
         await this.secrets.store(ENABLED_KEY, 'true');
@@ -104,7 +104,7 @@ export class LockService {
         const salt = await this.secrets.get(SALT_KEY);
         const stored = await this.secrets.get(HASH_KEY);
         if (!salt || !stored) { return false; }
-        const candidate = deriveHash(password, salt);
+        const candidate = await deriveHashAsync(password, salt);
         // Use timing-safe comparison to prevent timing attacks
         try {
             return nodeCrypto.timingSafeEqual(
@@ -116,7 +116,21 @@ export class LockService {
         }
     }
 
-    async unlock(password: string): Promise<boolean> {
+    /** Tail of the unlock queue — attempts run strictly one after another. */
+    private _unlockQueue: Promise<unknown> = Promise.resolve();
+
+    /**
+     * Verify the password and unlock. Attempts are serialized: verification is
+     * asynchronous, so parallel calls would otherwise all pass the lockout check
+     * before any failure was counted, defeating the brute-force limit.
+     */
+    unlock(password: string): Promise<boolean> {
+        const attempt = this._unlockQueue.then(() => this._unlockOnce(password));
+        this._unlockQueue = attempt.catch(() => undefined);
+        return attempt;
+    }
+
+    private async _unlockOnce(password: string): Promise<boolean> {
         // S2 — restore persisted lockout state (survives window reload)
         await this.ensureBruteForceLoaded();
 
@@ -134,12 +148,17 @@ export class LockService {
             return false;
         }
 
+        const started = Date.now();
         const ok = await this.verify(password);
+        log.info(`Unlock attempt verified in ${Date.now() - started} ms (${ok ? 'ok' : 'wrong password'})`);
         if (ok) {
-            // S2 — reset counters on success
-            this._failedAttempts = 0;
-            this._lockedUntil = 0;
-            await this.persistBruteForce();
+            // S2 — reset counters on success; skip the SecretStorage writes when there is
+            // nothing to reset (each write is a round trip to the local keychain over SSH).
+            if (this._failedAttempts !== 0 || this._lockedUntil !== 0) {
+                this._failedAttempts = 0;
+                this._lockedUntil = 0;
+                await this.persistBruteForce();
+            }
             this._unlocked = true;
             this._onStateChange.fire();
             // S1 — start auto-lock timer after unlock

@@ -11,6 +11,14 @@ updates:
       # Group all dev tooling updates into one PR
       dev-tooling:
         dependency-type: "development"
+    ignore:
+      # TypeScript 7 is not yet supported by typescript-eslint (peer <6.1.0).
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
+      # @types/vscode must match engines.vscode (vsce rejects a newer one);
+      # it is bumped by hand together with the engines field.
+      - dependency-name: "@types/vscode"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     labels:
       - "dependencies"
     commit-message:

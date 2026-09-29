@@ -8,6 +8,8 @@ import { decryptData, isEncryptedFile } from './crypto';
 import { parseKubeconfig } from './kubeconfigParser';
 import { log } from './logger';
 import { t } from './i18n';
+import { analyzeKubeconfig } from './execTrust';
+import { MIN_PASSWORD_LENGTH, validateNewPassword } from './passwordPolicy';
 
 export const SETUP_KEY = 'kubectl-control.setupDone';
 
@@ -144,6 +146,9 @@ export async function importFromLocalKubeconfig(
             kubeconfigData: minimalKubeconfigData,
             activeContext: ctx.name,
             namespace: ctx.namespace || 'default',
+            // The user's own ~/.kube/config: any credential plugin in it already runs on
+            // every plain `kubectl` call on this machine, so it counts as approved.
+            execTrust: analyzeKubeconfig(minimalKubeconfigData).fingerprint,
         });
         imported++;
     }
@@ -173,8 +178,8 @@ export async function promptSetPassword(lockService: LockService): Promise<boole
     const pwd = await vscode.window.showInputBox({
         title: t('Set Password'),
         password: true,
-        prompt: t('At least 6 characters'),
-        validateInput: v => (!v || v.length < 6) ? t('At least 6 characters required') : undefined
+        prompt: t('At least {0} characters', MIN_PASSWORD_LENGTH),
+        validateInput: validateNewPassword
     });
     if (!pwd) { return false; }
 
