@@ -9,6 +9,15 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.4.12] – 2026-09-29
+
+### Added
+- **Expiry warning for kubeconfig credentials.** The connection list shows ⏳`N`d when the client
+  certificate or JWT token of the connection's active context expires within 14 days, and ⛔ once
+  it has expired; the tooltip shows the date. The dates are read locally from the kubeconfig (no
+  cluster access, nothing leaves the machine), so an expired kubeconfig is recognisable as such
+  instead of only showing up as "not authenticated". ([src/credentialExpiry.ts](src/credentialExpiry.ts))
+
 ## [1.4.11] – 2026-09-29
 
 ### Fixed

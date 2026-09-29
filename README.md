@@ -21,6 +21,7 @@ A VS Code extension for managing multiple Kubernetes clusters with isolated kube
 
 ### Cluster Tree
 - **Status indicator** per cluster: 🟢 reachable, 🔴 unreachable, 🟡 token expired / not authenticated, 🛡️ credential plugin not approved yet (see [Security](#security)); checked on startup and every 60 s while the window is focused, at most 3 clusters at a time (`kubectl-control.statusCheckIntervalSeconds`, `0` = off)
+- **Credential expiry warning**: ⏳`N`d next to a connection whose client certificate or JWT token expires within 14 days, ⛔ once it has expired (date in the tooltip). Read locally from the kubeconfig — no cluster access needed
 - **Pin** frequently used clusters to the top, **mark production** environments (🔴)
 - **Filter** the tree by name, namespace or group (search icon in the view title)
 

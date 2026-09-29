@@ -178,6 +178,10 @@ export const de: Record<string, string> = {
     '- Group: `{0}`\n': '- Gruppe: `{0}`\n',
     '\n⚠️ Production environment — changes take effect immediately\n': '\n⚠️ Produktionsumgebung — Änderungen wirken sich direkt aus\n',
     '\n⚠️ Cluster unreachable\n': '\n⚠️ Cluster nicht erreichbar\n',
+    'Client certificate': 'Client-Zertifikat',
+    'Token': 'Token',
+    '\n⛔ {0} expired on {1} — re-import the kubeconfig.\n': '\n⛔ {0} ist am {1} abgelaufen – kubeconfig neu importieren.\n',
+    '\n⏳ {0} expires on {1} (in {2} days).\n': '\n⏳ {0} läuft am {1} ab (in {2} Tagen).\n',
     '\n⚠️ Token expired or invalid — not authenticated. Re-import kubeconfig.\n':
         '\n⚠️ Token abgelaufen oder ungültig — nicht authentifiziert. Kubeconfig neu importieren.\n',
     "\n_Terminal is open_": '\n_Terminal ist geöffnet_',
