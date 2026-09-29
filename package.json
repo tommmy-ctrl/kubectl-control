@@ -1,7 +1,7 @@
 {
   "name": "kubectl-control",
   "displayName": "Kubectl Control",
-  "description": "Manage multiple Kubernetes clusters with isolated kubeconfig terminals, group support, and encrypted export/import.",
+  "description": "Manage multiple Kubernetes clusters with isolated kubeconfig terminals, groups, pods/logs, port-forward, Helm and RBAC views, encrypted export/import and GitHub Sync, password lock.",
   "version": "1.4.4",
   "author": "Tom Kölsch",
   "publisher": "tommmy-ctrl",
