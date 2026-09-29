@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
-import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { ClusterProfile, ClusterStore, ShellType } from './store';
 import { log } from './logger';
 import { t } from './i18n';
-import { TEMP_DIR, ensureTempDir } from './kubectlExec';
+import { ensureTempDir, tempKubeconfigPath, cleanupOrphanedTempFiles } from './kubectlExec';
 import { assertKubeconfigAllowed, ensureClusterExecTrusted } from './execTrust';
 
 // On Windows, prefer Git Bash if present; fall back to undefined (VS Code default shell) so the terminal still opens.
@@ -314,7 +313,9 @@ export class TerminalManager implements vscode.Disposable {
     }
 
     private tempFilePath(clusterId: string): string {
-        return path.join(TEMP_DIR, `kubeconfig-${clusterId}.yaml`);
+        // Per window (PID) and cluster: terminals of the same cluster in THIS window share
+        // it, but another window never overwrites or deletes it.
+        return tempKubeconfigPath('term', clusterId);
     }
 
     private async openNew(profile: ClusterProfile): Promise<void> {
@@ -400,18 +401,9 @@ export class TerminalManager implements vscode.Disposable {
     }
 
     async cleanupOrphanedTempFiles(): Promise<void> {
-        try {
-            const entries = await fs.readdir(TEMP_DIR);
-            await Promise.all(
-                entries
-                    .filter(f => f.startsWith('kubeconfig-') && f.endsWith('.yaml'))
-                    .map(f => fs.unlink(path.join(TEMP_DIR, f)).catch(() => undefined)),
-            );
-            if (entries.length > 0) {
-                log.info(`Cleaned up ${entries.length} orphaned temp kubeconfig file(s)`);
-            }
-        } catch {
-            // Directory doesn't exist yet — nothing to clean
+        const removed = await cleanupOrphanedTempFiles();
+        if (removed > 0) {
+            log.info(`Cleaned up ${removed} orphaned temp kubeconfig file(s)`);
         }
     }
 

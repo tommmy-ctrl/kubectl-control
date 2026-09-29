@@ -116,7 +116,21 @@ export class LockService {
         }
     }
 
-    async unlock(password: string): Promise<boolean> {
+    /** Tail of the unlock queue — attempts run strictly one after another. */
+    private _unlockQueue: Promise<unknown> = Promise.resolve();
+
+    /**
+     * Verify the password and unlock. Attempts are serialized: verification is
+     * asynchronous, so parallel calls would otherwise all pass the lockout check
+     * before any failure was counted, defeating the brute-force limit.
+     */
+    unlock(password: string): Promise<boolean> {
+        const attempt = this._unlockQueue.then(() => this._unlockOnce(password));
+        this._unlockQueue = attempt.catch(() => undefined);
+        return attempt;
+    }
+
+    private async _unlockOnce(password: string): Promise<boolean> {
         // S2 — restore persisted lockout state (survives window reload)
         await this.ensureBruteForceLoaded();
 
