@@ -9,6 +9,47 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.5.0] – 2026-09-29
+
+First stable release since 1.3.3. It collects the dev rounds 1.4.0 – 1.4.12 (details in their
+entries below). **Existing setups keep working after the update:** connections, groups, the lock
+password and sync stay as they are, and connections that already use a credential plugin
+(`aws eks get-token`, `gke-gcloud-auth-plugin`, `kubelogin` …) are approved automatically once.
+
+### Added
+- **Multiple terminals per cluster** and **Close All Terminals** per cluster.
+- **Pods & Deployments viewer** with *All namespaces*, **live logs** and **Shell in Pod**
+  (`kubectl exec -it … -- sh`, container picker, extra confirmation on production clusters).
+- **Namespace picker** listing the cluster's namespaces (with manual entry as fallback) —
+  everywhere a namespace is needed.
+- **Credential expiry warning:** ⏳`N`d when a connection's client certificate or JWT token
+  expires within 14 days, ⛔ once expired.
+- **Cluster search/filter** in the Clusters view.
+- **Credential Plugin Approvals** in the settings menu (⚙): review, approve or revoke.
+
+### Security
+- **Credential plugins need explicit approval.** A kubeconfig can make kubectl run any local
+  program (`exec` / `auth-provider`); new or changed plugin commands are now shown and must be
+  approved before anything runs, and approvals are never imported or synced.
+- **The password lock covers every action** and background status checks pause while locked;
+  parallel unlock attempts can no longer bypass the brute-force lockout.
+- **New passwords need at least 12 characters** (existing shorter passwords keep working, with a
+  one-time hint to change them).
+- Background `kubectl` calls (status checks, lists, the kubectl availability check) no longer go
+  through a shell; Marketplace publishing uses short-lived
+  Entra ID (OIDC) credentials instead of a stored token; CI tokens are read-only.
+
+### Changed
+- **Much faster on larger clusters:** Pods/Deployments use kubectl's server-side table output,
+  lists up to 64 MiB no longer fail, namespaces are cached, and unlocking takes about a second
+  with visible progress.
+- **Lighter status checks** (at most 3 clusters at a time, only while the window is focused) —
+  they could overload small Remote-SSH hosts.
+
+### Fixed
+- **Helm Releases** failed with "unknown flag: --context".
+- **Opening a second VS Code window** broke cluster terminals in the first one.
+
 ## [1.4.12] – 2026-09-29
 
 ### Added
