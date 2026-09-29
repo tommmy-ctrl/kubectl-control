@@ -21,6 +21,12 @@ published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in
   renders first. The log records how long verification took. Existing passwords are unaffected
   — the hash is bit-for-bit identical. ([src/lockService.ts](src/lockService.ts))
 
+### Maintenance
+- Development tooling updated (eslint, typescript-eslint, mocha, webpack, webpack-cli,
+  @vscode/test-electron, @types/node); no change to the shipped extension. Dependabot no longer
+  proposes TypeScript 7 (not yet supported by typescript-eslint) or `@types/vscode` newer than
+  the supported VS Code version.
+
 ## [1.4.7] – 2026-09-29
 
 ### Fixed
