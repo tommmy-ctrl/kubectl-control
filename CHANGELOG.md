@@ -9,6 +9,17 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.4.11] – 2026-09-29
+
+### Fixed
+- **Cluster terminals in one window broke when another VS Code window was opened.** On startup
+  the extension deleted *every* temporary kubeconfig — including those still used by terminals,
+  logs and shells in other open windows — and two windows with the same cluster open shared one
+  file, so closing it in one window removed it for the other. Temp files now carry the owning
+  window's process ID; only files of windows that no longer run are cleaned up (files from older
+  versions after 24 hours). ([src/kubectlExec.ts](src/kubectlExec.ts),
+  [src/terminalManager.ts](src/terminalManager.ts))
+
 ## [1.4.10] – 2026-09-29
 
 ### Fixed
