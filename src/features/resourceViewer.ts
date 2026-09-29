@@ -68,7 +68,10 @@ function buildPodsHtml(nonce: string, cluster: ClusterProfile, namespace: string
             <td><span class="status status-${escapeHtml(phase.toLowerCase())}">${escapeHtml(phase)}</span></td>
             <td>${escapeHtml(restarts)}</td>
             <td>${escapeHtml(age)}</td>
-            <td><button class="logsBtn" data-pod="${escapeHtml(podName)}">&#128220; Logs</button></td>
+            <td>
+                <button class="logsBtn" data-pod="${escapeHtml(podName)}">&#128220; Logs</button>
+                <button class="shellBtn" data-pod="${escapeHtml(podName)}">&#9000; Shell</button>
+            </td>
         </tr>`;
     }).join('');
 
@@ -148,7 +151,7 @@ function buildPageHtml(
         button:hover {
             background: var(--vscode-button-hoverBackground);
         }
-        .logsBtn {
+        .logsBtn, .shellBtn {
             padding: 2px 10px;
             font-size: 0.85em;
         }
@@ -206,6 +209,10 @@ function buildPageHtml(
             const btn = event.target.closest('.logsBtn');
             if (btn) {
                 vscode.postMessage({ command: 'logs', pod: btn.dataset.pod });
+            }
+            const shellBtn = event.target.closest('.shellBtn');
+            if (shellBtn) {
+                vscode.postMessage({ command: 'shell', pod: shellBtn.dataset.pod });
             }
         });
     </script>
@@ -367,6 +374,76 @@ async function openPodLogs(
     log.info(`[logs] streaming pod=${podName} ns=${namespace} cluster="${cluster.name}"`);
 }
 
+/**
+ * Opens an interactive shell (`kubectl exec -it … -- sh`) in a pod. Same safety
+ * pattern as openPodLogs(): every interpolated name is validated against
+ * K8S_NAME_RE / the context regex first, and `sh` is used because it exists in
+ * virtually every image and the command line works unchanged in bash, zsh,
+ * PowerShell and cmd.
+ */
+async function openPodShell(
+    cluster: ClusterProfile,
+    namespace: string,
+    podName: string,
+    containers: KubeContainerSpec[],
+): Promise<void> {
+    if (!K8S_NAME_RE.test(podName) || !K8S_NAME_RE.test(namespace)) {
+        log.warn(`openPodShell: rejected unsafe pod/namespace "${podName}" / "${namespace}"`);
+        void vscode.window.showErrorMessage(t('Invalid pod name: "{0}"', podName));
+        return;
+    }
+
+    const containerNames = containers
+        .map(c => c.name)
+        .filter((n): n is string => !!n && K8S_NAME_RE.test(n));
+
+    let containerArg: string | undefined;
+    if (containerNames.length > 1) {
+        const choice = await vscode.window.showQuickPick(containerNames, {
+            title: t('Shell in pod "{0}" — select container', podName),
+            placeHolder: t('Select container…'),
+        });
+        if (!choice) { return; }
+        containerArg = choice;
+    } else if (containerNames.length === 1) {
+        containerArg = containerNames[0];
+    }
+
+    // A shell in a production pod can change live state — same confirmation as the cluster terminal.
+    if (cluster.isProd) {
+        const btnOpen = t('Open shell');
+        const confirm = await vscode.window.showWarningMessage(
+            t('⚠️ "{0}" is a production environment. Really open a shell in pod "{1}"?', cluster.name, podName),
+            { modal: true },
+            btnOpen,
+        );
+        if (confirm !== btnOpen) { return; }
+    }
+
+    const { path: kubeconfigPath, cleanup } = await createPersistentKubeconfig(cluster.kubeconfigData);
+
+    const args = ['exec', '-it', podName, '-n', namespace];
+    if (cluster.activeContext && isSafeContextName(cluster.activeContext)) {
+        args.push('--context', cluster.activeContext);
+    }
+    if (containerArg) {
+        args.push('-c', containerArg);
+    }
+    args.push('--', 'sh');
+
+    const terminal = vscode.window.createTerminal({
+        name: `⌨ ${podName} (${cluster.name})`,
+        env: {
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            KUBECONFIG: kubeconfigPath,
+        },
+    });
+    logTerminalCleanups.set(terminal, cleanup);
+    terminal.sendText(`kubectl ${args.join(' ')}`);
+    terminal.show();
+    log.info(`[shell] exec pod=${podName} ns=${namespace} cluster="${cluster.name}"`);
+}
+
 async function runResourceCommand(
     kind: ResourceKind,
     treeItem: ClusterTreeItem | undefined,
@@ -453,6 +530,13 @@ async function runResourceCommand(
                 return;
             }
             await openPodLogs(cluster!, namespace, message.pod, pod.spec?.containers ?? []);
+        } else if (message.command === 'shell' && message.pod) {
+            const pod = lastPods.find(p => p.metadata?.name === message.pod);
+            if (!pod) {
+                log.warn(`resourceViewer(shell): pod "${message.pod}" not found in last-rendered list`);
+                return;
+            }
+            await openPodShell(cluster!, namespace, message.pod, pod.spec?.containers ?? []);
         }
     });
 

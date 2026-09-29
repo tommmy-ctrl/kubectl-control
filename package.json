@@ -2,7 +2,7 @@
   "name": "kubectl-control",
   "displayName": "Kubectl Control",
   "description": "Manage multiple Kubernetes clusters with isolated kubeconfig terminals, groups, pods/logs, port-forward, Helm and RBAC views, encrypted export/import and GitHub Sync, password lock.",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "author": "Tom Kölsch",
   "publisher": "tommmy-ctrl",
   "license": "MIT",
@@ -80,6 +80,11 @@
       {
         "command": "kubectl-control.quickSwitch",
         "title": "%command.quickSwitch%"
+      },
+      {
+        "command": "kubectl-control.manageExecApprovals",
+        "title": "%command.manageExecApprovals%",
+        "icon": "$(shield)"
       },
       {
         "command": "kubectl-control.showLogs",

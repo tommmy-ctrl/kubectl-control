@@ -276,3 +276,75 @@ export async function ensureClusterExecTrusted(store: ClusterStore, profile: Clu
     await store.updateCluster(profile.id, { execTrust: result.fingerprint });
     return true;
 }
+
+// ── Managing approvals ────────────────────────────────────────────────────────
+
+/**
+ * Revokes the approval of a credential plugin. Approvals are matched by
+ * fingerprint, so every connection using the identical command loses it —
+ * otherwise the command would stay runnable through the other connection.
+ * @returns names of the connections whose approval was removed.
+ */
+export async function revokeExecTrust(store: ClusterStore, fingerprint: string): Promise<string[]> {
+    sessionApprovals.delete(fingerprint);
+    const affected = (await store.getClusters()).filter(c => c.execTrust === fingerprint);
+    for (const c of affected) {
+        await store.updateCluster(c.id, { execTrust: undefined });
+    }
+    log.info(`execTrust: approval revoked for ${affected.length} connection(s)`);
+    return affected.map(c => c.name);
+}
+
+/** Command "Manage Credential Plugin Approvals": list, approve and revoke per connection. */
+export async function manageExecApprovals(store: ClusterStore): Promise<void> {
+    const clusters = await store.getClusters();
+    const withPlugin = clusters
+        .map(c => ({ cluster: c, analysis: analyzeKubeconfig(c.kubeconfigData) }))
+        .filter(x => x.analysis.fingerprint !== undefined);
+
+    if (withPlugin.length === 0) {
+        void vscode.window.showInformationMessage(t('None of your connections uses a credential plugin (exec/auth-provider).'));
+        return;
+    }
+
+    const items = withPlugin.map(({ cluster, analysis }) => {
+        const approved = isKubeconfigAllowed(cluster.kubeconfigData);
+        return {
+            label: `${approved ? '$(pass-filled)' : '$(shield)'} ${cluster.name}`,
+            description: approved ? t('approved') : t('not approved'),
+            detail: analysis.entries.map(e => e.summary).join('  ·  '),
+            cluster,
+            fingerprint: analysis.fingerprint!,
+            approved,
+        };
+    });
+
+    const pick = await vscode.window.showQuickPick(items, {
+        title: t('Credential Plugin Approvals'),
+        placeHolder: t('Select a connection to approve or revoke its credential plugin'),
+        matchOnDetail: true,
+    });
+    if (!pick) { return; }
+
+    if (!pick.approved) {
+        if (await ensureClusterExecTrusted(store, pick.cluster)) {
+            void vscode.window.showInformationMessage(t('Credential plugin for "{0}" approved.', pick.cluster.name));
+        }
+        return;
+    }
+
+    const others = clusters.filter(c => c.id !== pick.cluster.id && c.execTrust === pick.fingerprint).map(c => c.name);
+    const btnRevoke = t('Revoke approval');
+    const confirm = await vscode.window.showWarningMessage(
+        t('Revoke the approval for "{0}"?', pick.cluster.name),
+        {
+            modal: true,
+            detail: t('kubectl will not run this command again until you approve it anew. Terminals that are already open keep running.')
+                + (others.length > 0 ? '\n\n' + t('Also affects (same command): {0}', others.join(', ')) : ''),
+        },
+        btnRevoke,
+    );
+    if (confirm !== btnRevoke) { return; }
+    const revoked = await revokeExecTrust(store, pick.fingerprint);
+    void vscode.window.showInformationMessage(t('Approval revoked for: {0}', revoked.join(', ')));
+}

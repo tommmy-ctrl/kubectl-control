@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { ClusterStore, ClusterProfile } from '../../store';
-import { analyzeKubeconfig, isKubeconfigAllowed, assertKubeconfigAllowed, syncApprovedFingerprints } from '../../execTrust';
+import { analyzeKubeconfig, isKubeconfigAllowed, assertKubeconfigAllowed, syncApprovedFingerprints, revokeExecTrust } from '../../execTrust';
 import type * as vscode from 'vscode';
 
 // ---------------------------------------------------------------------------
@@ -190,5 +190,24 @@ suite('execTrust', () => {
         const good = withExec('aws');
         await store.addCluster({ name: 'eks', kubeconfigData: good, execTrust: analyzeKubeconfig(good).fingerprint });
         assert.ok(!(await store.exportClusters()).includes('execTrust'));
+    });
+
+    test('revoke: removes the approval from every connection with the same command', async () => {
+        const store = new ClusterStore(makeContext(new FakeSecretStorage()));
+        const yaml = withExec('aws', ['eks', 'get-token']);
+        const fp = analyzeKubeconfig(yaml).fingerprint!;
+        const other = withExec('gke-gcloud-auth-plugin');
+        const otherFp = analyzeKubeconfig(other).fingerprint!;
+        await store.addCluster({ name: 'eks-a', kubeconfigData: yaml, execTrust: fp });
+        await store.addCluster({ name: 'eks-b', kubeconfigData: yaml, execTrust: fp });
+        await store.addCluster({ name: 'gke', kubeconfigData: other, execTrust: otherFp });
+        assert.ok(isKubeconfigAllowed(yaml));
+
+        const revoked = await revokeExecTrust(store, fp);
+        assert.deepStrictEqual(revoked.sort(), ['eks-a', 'eks-b']);
+        assert.ok(!isKubeconfigAllowed(yaml), 'revoked command is blocked again');
+        assert.ok(isKubeconfigAllowed(other), 'unrelated approval is untouched');
+        const loaded = await store.getClusters();
+        assert.strictEqual(loaded.find(c => c.name === 'gke')!.execTrust, otherFp);
     });
 });
