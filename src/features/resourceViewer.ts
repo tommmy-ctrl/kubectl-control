@@ -51,6 +51,19 @@ function formatAge(timestamp: string | undefined): string {
 
 // ── HTML builders ─────────────────────────────────────────────────────────────
 
+function buildLoadingHtml(message: string): string {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
+</head>
+<body style="font-family: var(--vscode-font-family); color: var(--vscode-foreground); padding: 16px;">
+    <p>&#8987; ${escapeHtml(message)}</p>
+</body>
+</html>`;
+}
+
 function buildPodsHtml(nonce: string, cluster: ClusterProfile, namespace: string, items: KubePodItem[], allNs: boolean): string {
     const rows = items.map(pod => {
         const containers = pod.spec?.containers ?? [];
@@ -467,6 +480,11 @@ async function runResourceCommand(
         vscode.ViewColumn.One,
         { enableScripts: true, retainContextWhenHidden: true },
     );
+    // Immediate feedback — kubectl (and a credential plugin such as `aws eks get-token`)
+    // can take several seconds, and an empty panel looked like nothing happened.
+    panel.webview.html = buildLoadingHtml(kind === 'pods'
+        ? t('Loading pods from "{0}" ({1})…', cluster.name, namespace)
+        : t('Loading deployments from "{0}" ({1})…', cluster.name, namespace));
 
     // Snapshot of the last-rendered pods, so the 'logs' message handler can look up
     // a pod's containers without re-fetching (only populated when kind === 'pods').
@@ -474,12 +492,20 @@ async function runResourceCommand(
 
     // 4. Function to run and render
     async function fetch(): Promise<void> {
+        // Spinner in the status bar while kubectl runs (initial load and every refresh).
+        await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Window, title: t('Kubectl Control: loading {0}…', kind) },
+            () => fetchInner(),
+        );
+    }
+
+    async function fetchInner(): Promise<void> {
         try {
             const { stdout, stderr } = await execWithKubeconfig(
                 cluster!.kubeconfigData,
                 cluster!.activeContext,
                 allNs ? ['get', kind, '--all-namespaces', '-o', 'json'] : ['get', kind, '-n', namespace, '-o', 'json'],
-                8000,
+                allNs ? 30_000 : 15_000,
             );
 
             if (stderr && !stdout) {
