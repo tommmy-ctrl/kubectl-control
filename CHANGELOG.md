@@ -18,6 +18,14 @@ published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in
   *Enter manually…* remain; a valid name typed into the filter is accepted directly.
   ([src/features/namespaceBrowser.ts](src/features/namespaceBrowser.ts))
 
+- **Lighter background status checks** — they could cause load spikes on small remote hosts
+  that dropped VS Code Remote-SSH connections: at most **3 clusters are checked at the same
+  time** (each check starts kubectl and possibly a credential plugin such as `aws`), a new
+  round never starts while the previous one is still running, **only the focused VS Code
+  window polls** (a background window catches up when it is brought to the front), and
+  clusters without `kubectl auth whoami` support go straight to `cluster-info` instead of
+  starting two processes every time. ([src/clusterStatus.ts](src/clusterStatus.ts))
+
 ### Added
 - **"All namespaces" for Pods and Deployments** (`kubectl get … --all-namespaces`), with an
   extra *Namespace* column; 📋 Logs and ⌨ Shell use each pod's own namespace.
