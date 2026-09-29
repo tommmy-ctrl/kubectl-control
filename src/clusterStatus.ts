@@ -12,6 +12,25 @@ export type ClusterStatus = 'reachable' | 'unreachable' | 'unauthorized' | 'untr
 const BACKOFF_THRESHOLD = 3;
 /** Maximum backoff multiplier (caps at ~10x normal interval). */
 const MAX_BACKOFF_MULTIPLIER = 10;
+/**
+ * At most this many clusters are checked at the same time. Each check starts
+ * kubectl and, for EKS/GKE/AKS, a credential plugin (aws, gke-gcloud-auth-plugin,
+ * kubelogin …); starting all of them at once caused load spikes on small remote
+ * hosts that were enough to drop VS Code Remote-SSH connections.
+ */
+const MAX_PARALLEL_CHECKS = 3;
+
+/** Runs `worker` over `items` with at most `limit` in flight. */
+export async function runLimited<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
+    let next = 0;
+    const lanes = Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (next < items.length) {
+            const item = items[next++];
+            await worker(item).catch(() => undefined);
+        }
+    });
+    await Promise.all(lanes);
+}
 
 /**
  * Classify an error text from a failed kubectl call.
@@ -81,6 +100,15 @@ export class ClusterStatusService implements vscode.Disposable {
     private readonly _authNotified = new Set<string>();
 
     private readonly _storeSub: vscode.Disposable;
+    private readonly _configSub: vscode.Disposable;
+    private readonly _windowSub: vscode.Disposable;
+
+    /** The running checkAll() round, if any — a new tick never starts a second one. */
+    private _round?: Promise<void>;
+    /** When the last full round finished (ms since epoch); 0 = never. */
+    private _lastRoundAt = 0;
+    /** Clusters whose API server does not support `auth whoami` — go straight to cluster-info. */
+    private readonly _useClusterInfo = new Set<string>();
 
     /**
      * @param isLocked SECURITY: background checks run kubectl (and with it any
@@ -92,17 +120,9 @@ export class ClusterStatusService implements vscode.Disposable {
         private readonly terminalManager: TerminalManager,
         private readonly isLocked: () => Promise<boolean> = async () => false,
     ) {
-        const intervalSeconds = this._readIntervalSetting();
-
         // Always do an immediate check on startup
         this.checkAll().catch(() => undefined);
-
-        if (intervalSeconds > 0) {
-            this._timer = setInterval(() => {
-                this._tickCount++;
-                this.checkAll().catch(() => undefined);
-            }, intervalSeconds * 1000);
-        }
+        this._startTimer();
 
         // A cluster whose credential plugin was just approved should not wait for the next tick.
         this._storeSub = store.onDidChange(() => {
@@ -110,11 +130,33 @@ export class ClusterStatusService implements vscode.Disposable {
         });
 
         // Re-apply interval if the setting changes at runtime
-        vscode.workspace.onDidChangeConfiguration(e => {
+        this._configSub = vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('kubectl-control.statusCheckIntervalSeconds')) {
                 this._restartTimer();
             }
         });
+
+        // Background windows do not poll. When the window comes back to the front,
+        // catch up if the last round is older than one interval.
+        this._windowSub = vscode.window.onDidChangeWindowState(state => {
+            const intervalMs = this._readIntervalSetting() * 1000;
+            if (state.focused && intervalMs > 0 && Date.now() - this._lastRoundAt >= intervalMs) {
+                this.checkAll().catch(() => undefined);
+            }
+        });
+    }
+
+    private _startTimer(): void {
+        const intervalSeconds = this._readIntervalSetting();
+        if (intervalSeconds > 0) {
+            this._timer = setInterval(() => {
+                // Only the focused VS Code window polls — several open windows (or a
+                // window left in the background) must not multiply the load.
+                if (!vscode.window.state.focused) { return; }
+                this._tickCount++;
+                this.checkAll().catch(() => undefined);
+            }, intervalSeconds * 1000);
+        }
     }
 
     private _readIntervalSetting(): number {
@@ -129,14 +171,7 @@ export class ClusterStatusService implements vscode.Disposable {
             this._timer = undefined;
         }
         this._tickCount = 0;
-
-        const intervalSeconds = this._readIntervalSetting();
-        if (intervalSeconds > 0) {
-            this._timer = setInterval(() => {
-                this._tickCount++;
-                this.checkAll().catch(() => undefined);
-            }, intervalSeconds * 1000);
-        }
+        this._startTimer();
     }
 
     getStatus(clusterId: string): ClusterStatus {
@@ -144,9 +179,16 @@ export class ClusterStatusService implements vscode.Disposable {
     }
 
     async checkAll(): Promise<void> {
-        if (await this.isLocked()) { return; }
-        const clusters = await this.store.getClusters();
-        await Promise.all(clusters.map(c => this._maybeCheckOne(c.id, c.kubeconfigData, c.activeContext, c.name ?? c.id)));
+        // A slow round (timeouts, many clusters) must not pile up with the next tick.
+        if (this._round) { return this._round; }
+        this._round = (async () => {
+            if (await this.isLocked()) { return; }
+            const clusters = await this.store.getClusters();
+            await runLimited(clusters, MAX_PARALLEL_CHECKS,
+                c => this._maybeCheckOne(c.id, c.kubeconfigData, c.activeContext, c.name ?? c.id));
+            this._lastRoundAt = Date.now();
+        })().finally(() => { this._round = undefined; });
+        return this._round;
     }
 
     /**
@@ -168,9 +210,11 @@ export class ClusterStatusService implements vscode.Disposable {
         const pending = [...this._statuses].filter(([, s]) => s === 'untrusted').map(([id]) => id);
         if (pending.length === 0 || await this.isLocked()) { return; }
         const clusters = await this.store.getClusters();
-        await Promise.all(clusters
-            .filter(c => pending.includes(c.id) && isKubeconfigAllowed(c.kubeconfigData))
-            .map(c => this.checkOne(c.id, c.kubeconfigData, c.activeContext, c.name ?? c.id)));
+        await runLimited(
+            clusters.filter(c => pending.includes(c.id) && isKubeconfigAllowed(c.kubeconfigData)),
+            MAX_PARALLEL_CHECKS,
+            c => this.checkOne(c.id, c.kubeconfigData, c.activeContext, c.name ?? c.id),
+        );
     }
 
     private async _maybeCheckOne(id: string, kubeconfigData: string, context?: string, name?: string): Promise<void> {
@@ -232,6 +276,10 @@ export class ClusterStatusService implements vscode.Disposable {
         context: string | undefined,
         name: string,
     ): Promise<ClusterStatus> {
+        // Clusters known not to support `auth whoami` skip it — one kubectl process instead of two.
+        if (this._useClusterInfo.has(id)) {
+            return this._clusterInfoStatus(kubeconfigData, context);
+        }
         // Primary: auth-validating check
         try {
             await execWithKubeconfig(
@@ -249,26 +297,23 @@ export class ClusterStatusService implements vscode.Disposable {
             }
 
             if (classification === 'retry-with-clusterinfo') {
-                // Fallback: cluster may not support SelfSubjectReview — use classic check
-                try {
-                    await execWithKubeconfig(
-                        kubeconfigData,
-                        context,
-                        ['cluster-info', '--request-timeout=3s'],
-                        5000,
-                    );
-                    return 'reachable';
-                } catch (clusterInfoErr) {
-                    const fallbackClassification = classifyError(errorText(clusterInfoErr));
-                    if (fallbackClassification === 'unauthorized') {
-                        return 'unauthorized';
-                    }
-                    return 'unreachable';
-                }
+                // Cluster may not support SelfSubjectReview — remember and use the classic check.
+                log.info(`Cluster "${name}": auth whoami unsupported, using cluster-info for status checks`);
+                this._useClusterInfo.add(id);
+                return this._clusterInfoStatus(kubeconfigData, context);
             }
 
             // classification === 'unreachable'
             return 'unreachable';
+        }
+    }
+
+    private async _clusterInfoStatus(kubeconfigData: string, context: string | undefined): Promise<ClusterStatus> {
+        try {
+            await execWithKubeconfig(kubeconfigData, context, ['cluster-info', '--request-timeout=3s'], 5000);
+            return 'reachable';
+        } catch (clusterInfoErr) {
+            return classifyError(errorText(clusterInfoErr)) === 'unauthorized' ? 'unauthorized' : 'unreachable';
         }
     }
 
@@ -290,6 +335,8 @@ export class ClusterStatusService implements vscode.Disposable {
     dispose(): void {
         if (this._timer) { clearInterval(this._timer); }
         this._storeSub.dispose();
+        this._configSub.dispose();
+        this._windowSub.dispose();
         this._onDidChange.dispose();
     }
 }
