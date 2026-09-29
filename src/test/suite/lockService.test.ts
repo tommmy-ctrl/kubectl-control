@@ -223,4 +223,19 @@ suite('LockService', () => {
         const ok = await svc2.unlock('pass');
         assert.strictEqual(ok, false, 'correct password must be rejected during lockout');
     });
+
+    test('parallel unlock attempts cannot bypass the lockout (attempts are serialized)', async () => {
+        const svc = new LockService(new FakeSecretStorage());
+        await svc.enableLock('correctPassword');
+        svc.lock();
+        // 10 wrong guesses fired at once, then the right password in the same burst.
+        const guesses = Array.from({ length: 10 }, (_, i) => svc.unlock(`wrong-${i}`));
+        const right = svc.unlock('correctPassword');
+        await Promise.all(guesses);
+        // After 3 failures the lockout kicks in, so the correct password queued behind
+        // them is refused too — exactly as if the guesses had been made one by one.
+        assert.strictEqual(await right, false);
+        assert.strictEqual(svc.isUnlocked(), false);
+        assert.ok(svc.isLockedOut);
+    });
 });

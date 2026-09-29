@@ -166,8 +166,8 @@ git push origin v1.5.0      # triggers release.yml
 
 | Name | Kind | Purpose | Workflow |
 |------|------|---------|----------|
-| `AZURE_CLIENT_ID` | Environment variable (`marketplace`) | Entra app used to publish (not a secret) | `release.yml`, `marketplace-identity.yml` |
-| `AZURE_TENANT_ID` | Environment variable (`marketplace`) | Entra tenant (not a secret) | `release.yml`, `marketplace-identity.yml` |
+| `AZURE_CLIENT_ID` | Environment variable (`marketplace`) | Entra app used to publish (not a secret) | `release.yml` |
+| `AZURE_TENANT_ID` | Environment variable (`marketplace`) | Entra tenant (not a secret) | `release.yml` |
 | `RELEASE_PAT` | Secret | Tag push that triggers `release.yml` (optional) | `promote.yml` |
 
 **Marketplace publishing uses no stored secret.** `release.yml` logs in to Microsoft Entra ID with
@@ -187,7 +187,8 @@ only runs `vsce package` (a local build, no Marketplace interaction) and needs n
 
 1. **GitHub environment.** Repo ▸ Settings ▸ Environments ▸ **New environment** `marketplace`.
    Under *Deployment branches and tags* choose **Selected branches and tags** and add the tag
-   rule `v*` plus the branch `beta` (only for running the one-time identity workflow in step 5).
+   rule `v*`. (For step 5 only, temporarily also allow the branch you run the identity workflow
+   from, and remove it again afterwards.)
 2. **Entra app registration.** [portal.azure.com](https://portal.azure.com) ▸ Microsoft Entra ID ▸
    App registrations ▸ **New registration** (name e.g. `kubectl-control-marketplace`, single
    tenant, no redirect URI). No Azure subscription is needed. Note the *Application (client) ID*
@@ -208,10 +209,14 @@ only runs `vsce package` (a local build, no Marketplace interaction) and needs n
    Do **not** create a client secret.
 4. **GitHub variables.** In the `marketplace` environment add the *variables* (not secrets)
    `AZURE_CLIENT_ID` and `AZURE_TENANT_ID` with the values from step 2.
-5. **Get the Marketplace member ID.** The workflow **Marketplace identity (one-time setup)**
-   runs on every push to `beta` that changes `.github/workflows/marketplace-identity.yml`
-   (manual *Run workflow* only works once the file is on `main`). It creates the identity's
-   Azure DevOps profile and prints its ID in the run summary.
+5. **Get the Marketplace member ID.** Done once (2026-09-28; ID
+   `21a34475-3912-6c05-baec-5a766350e215`). The identity needs an Azure DevOps profile before the
+   Marketplace can add it. The one-time workflow that created it was removed afterwards; to redo
+   this, restore `.github/workflows/marketplace-identity.yml` from git history (commit that
+   added it: see `git log --diff-filter=A -- .github/workflows/marketplace-identity.yml`), run it
+   from an allowed branch, and remove it again. It logs in via `azure/login` and calls
+   `az rest -u https://app.vssps.visualstudio.com/_apis/profile/profiles/me --resource
+   499b84ac-1321-427f-aa17-267ca6975798`.
 6. **Add the identity to the publisher.** [marketplace.visualstudio.com/manage](https://marketplace.visualstudio.com/manage)
    ▸ publisher `tommmy-ctrl` ▸ **Members** ▸ Add ▸ paste the ID from step 5 ▸ role
    **Contributor** (may publish updates; cannot manage the publisher).
@@ -220,7 +225,7 @@ only runs `vsce package` (a local build, no Marketplace interaction) and needs n
 
 From then on, a `vX.Y.0` / `vX.Y.Z-pre` tag publishes without any stored credential. Because the
 federated credential trusts only the `marketplace` environment and the environment only admits
-`v*` tags (and `beta` for step 5), no other branch or pull request can obtain a publishing token.
+`v*` tags, no other branch or pull request can obtain a publishing token.
 
 ---
 

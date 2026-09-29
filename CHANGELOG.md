@@ -20,6 +20,16 @@ published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in
   versions after 24 hours). ([src/kubectlExec.ts](src/kubectlExec.ts),
   [src/terminalManager.ts](src/terminalManager.ts))
 
+### Security
+- **Unlock attempts are serialized.** Since 1.4.8 the password is verified asynchronously; attempts
+  fired in parallel could all pass the lockout check before the first failure was counted, which
+  undermined the brute-force limit (3 → 10 s, 5 → 30 s, 7 → 60 s). They now run strictly one after
+  another. ([src/lockService.ts](src/lockService.ts))
+- **CI hardening.** The CI workflow's token is read-only; Dependabot auto-merge checks the PR
+  *author* instead of the triggering actor and only auto-merges development tooling — updates of
+  bundled production dependencies always get a human review; the one-time Marketplace identity
+  workflow was removed, so no branch needs access to the `marketplace` environment any more.
+
 ## [1.4.10] – 2026-09-29
 
 ### Fixed
