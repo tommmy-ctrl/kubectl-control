@@ -25,7 +25,7 @@ A VS Code extension for managing multiple Kubernetes clusters with isolated kube
 - **Filter** the tree by name, namespace or group (search icon in the view title)
 
 ### Cluster Tools (context menu of a cluster)
-- **List Pods / List Deployments** for a namespace; pods show restarts and age. Per pod, **📋 Logs** streams `kubectl logs -f` and **⌨ Shell** opens `kubectl exec -it … -- sh` in a terminal (container picker for multi-container pods; shells on production clusters ask for confirmation)
+- **List Pods / List Deployments** for a namespace picked from the cluster's live namespaces, or for **all namespaces**; pods show restarts and age. Per pod, **📋 Logs** streams `kubectl logs -f` and **⌨ Shell** opens `kubectl exec -it … -- sh` in a terminal (container picker for multi-container pods; shells on production clusters ask for confirmation)
 - **Port Forward** to `svc/…`, `pod/…` or `deploy/…`; running forwards can be stopped individually or all at once from the Command Palette
 - **Helm Releases** and **Helm History** (requires `helm` in `PATH`)
 - **Permissions (RBAC):** `kubectl auth can-i --list` for a namespace, or check a single verb/resource

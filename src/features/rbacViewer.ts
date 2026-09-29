@@ -7,20 +7,12 @@ import { log } from '../logger';
 import { t } from '../i18n';
 import { ensureClusterExecTrusted } from '../execTrust';
 import { registerGuardedCommand } from '../commandGuard';
+import { pickNamespace } from './namespaceBrowser';
 
 // ── Validation helpers ────────────────────────────────────────────────────────
 
-const NS_RE = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
-const NS_MAX = 63;
 const VERB_RE = /^[a-z][a-z0-9-]*$/;
 const RESOURCE_RE = /^[a-z][a-z0-9-]*$/;
-
-function validateNamespace(value: string): string | undefined {
-    if (!value) { return t('Namespace must not be empty.'); }
-    if (value.length > NS_MAX) { return t('Namespace must be at most {0} characters long.', NS_MAX); }
-    if (!NS_RE.test(value)) { return t('Namespace must comply with RFC1123 (lowercase letters, digits, hyphens).'); }
-    return undefined;
-}
 
 // ── HTML helpers ──────────────────────────────────────────────────────────────
 
@@ -182,14 +174,6 @@ async function pickCluster(store: ClusterStore): Promise<ClusterProfile | undefi
     return picked?.cluster;
 }
 
-async function pickNamespace(defaultNs: string): Promise<string | undefined> {
-    return vscode.window.showInputBox({
-        title: t('Namespace'),
-        prompt: t('Enter namespace (RFC1123)'),
-        value: defaultNs,
-        validateInput: validateNamespace,
-    });
-}
 
 // ── Command: kubectl-control.authCanI ────────────────────────────────────────
 
@@ -208,8 +192,7 @@ async function runAuthCanI(
     if (!profile) { return; }
     if (!await ensureClusterExecTrusted(store, profile)) { return; }
 
-    const defaultNs = profile.namespace || 'default';
-    const namespace = await pickNamespace(defaultNs);
+    const namespace = await pickNamespace(profile, { title: t('Permissions (can-i) — {0}: select namespace', profile.name) }) as string | undefined;
     if (!namespace) { return; }
 
     log.info(`rbacViewer: auth can-i --list on cluster="${profile.name}" ns="${namespace}"`);
@@ -306,8 +289,7 @@ async function runAuthCanIVerb(
     });
     if (!resource) { return; }
 
-    const defaultNs = profile.namespace || 'default';
-    const namespace = await pickNamespace(defaultNs);
+    const namespace = await pickNamespace(profile, { title: t('Permissions (can-i) — {0}: select namespace', profile.name) }) as string | undefined;
     if (!namespace) { return; }
 
     log.info(`rbacViewer: auth can-i ${verb} ${resource} -n ${namespace} on cluster="${profile.name}"`);
