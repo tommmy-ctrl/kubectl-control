@@ -345,7 +345,7 @@ async function handleExport(store: ClusterStore): Promise<void> {
     if (confirm !== password) { return; }
 
     const json = await store.exportClusters();
-    const encrypted = encryptData(json, password);
+    const encrypted = await encryptData(json, password);
 
     const uri = await vscode.window.showSaveDialog({
         filters: { 'Encrypted JSON': ['json'] },

@@ -44,7 +44,7 @@ export async function importFile(
             });
             if (!pwd) { return; }
             try {
-                json = decryptData(parsed, pwd);
+                json = await decryptData(parsed, pwd);
             } catch {
                 vscode.window.showErrorMessage(t('Incorrect password or corrupted file.'));
                 return;

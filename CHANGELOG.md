@@ -9,6 +9,28 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.6.1] – 2026-10-06 — Remote-SSH performance (beta)
+
+### Fixed
+- **Credential plugins left running after a timeout:** a timed-out `kubectl`/`helm` call now
+  kills the whole process tree (`aws eks get-token`, `gke-gcloud-auth-plugin`, `kubelogin` …),
+  not just `kubectl`. Unreachable clusters no longer pile up orphan processes on the remote host.
+- **Extension host blocked by encryption:** export, encrypted import and GitHub Sync derived their
+  key with synchronous PBKDF2 (0.3–1.5 s freeze on a remote host); it now runs on the thread pool.
+- **Terminal open/focus no longer re-writes all kubeconfigs:** the "last used" stamp is applied in
+  memory and persisted in one delayed write that does not trigger a GitHub Sync push.
+- **Status checks:** the connection list repaints only when a status actually changes (coalesced),
+  the start-up check is delayed with jitter and only runs in the focused window, "auth whoami
+  unsupported" is remembered across reloads, and repeated failures are logged only every 10th time.
+- Lock state is cached (invalidated when another window changes it) instead of one SecretStorage
+  round trip per tree refresh; the connection list refreshes are debounced.
+
+### Changed
+- Editing a connection only re-tests it when the kubeconfig or context changed, and shows progress while testing.
+- At most 5 concurrent port-forwards and 5 live log streams (each keeps tunnel traffic going under
+  Remote-SSH); port-forward "Handling connection" lines are no longer logged.
+- The connections sidebar keeps its context while hidden instead of re-sending its HTML.
+
 ## [1.5.0] – 2026-09-29
 
 First stable release since 1.3.3. It collects the dev rounds 1.4.0 – 1.4.12 (details in their

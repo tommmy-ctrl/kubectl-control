@@ -8,6 +8,13 @@ import { log } from '../logger';
 import { ensureClusterExecTrusted } from '../execTrust';
 import { registerGuardedCommand } from '../commandGuard';
 import { pickNamespace } from './namespaceBrowser';
+import { t } from '../i18n';
+
+/**
+ * Every kubectl port-forward opens a listening port that VS Code Remote-SSH auto-forwards
+ * through the SSH tunnel; unbounded forwards add unbounded tunnel load.
+ */
+const MAX_ACTIVE_FORWARDS = 5;
 
 // ── Validation regexes ────────────────────────────────────────────────────────
 
@@ -50,6 +57,9 @@ class PortForwardManager {
         namespace: string,
     ): Promise<string> {
         if (!NAMESPACE_RE.test(namespace)) { throw new Error(`Invalid namespace: "${namespace}"`); }
+        if (this._forwards.size >= MAX_ACTIVE_FORWARDS) {
+            throw new Error(t('At most {0} port-forwards can be active at once. Stop one first.', MAX_ACTIVE_FORWARDS));
+        }
         const { path: kubeconfigPath, cleanup } = await createPersistentKubeconfig(cluster.kubeconfigData);
 
         const args: string[] = [];
@@ -80,7 +90,12 @@ class PortForwardManager {
             log.info(`[port-forward][${cluster.name}] ${data.toString().trimEnd()}`);
         });
         child.stderr?.on('data', (data: Buffer) => {
-            log.warn(`[port-forward][${cluster.name}] ${data.toString().trimEnd()}`);
+            // "Handling connection for N" is printed per proxied connection — pure log spam
+            // (each line is an RPC to the local client under Remote-SSH).
+            const text = data.toString().split(/\r?\n/)
+                .filter(l => l.trim() && !l.startsWith('Handling connection for'))
+                .join('\n');
+            if (text) { log.warn(`[port-forward][${cluster.name}] ${text}`); }
         });
 
         child.on('error', async (err) => {

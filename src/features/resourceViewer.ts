@@ -236,6 +236,9 @@ async function pickCluster(store: ClusterStore): Promise<ClusterProfile | undefi
 // Maps an open "logs" terminal to the cleanup for its persistent temp kubeconfig,
 // so the file is removed once the terminal (and therefore `kubectl logs -f`) closes.
 const logTerminalCleanups = new Map<vscode.Terminal, () => Promise<void>>();
+// Terminals running `kubectl logs -f`. Each stream pushes PTY data through the (SSH) channel nonstop.
+const logStreamTerminals = new Set<vscode.Terminal>();
+const MAX_LOG_STREAMS = 5;
 
 /**
  * Opens `kubectl logs -f` for a pod in a new terminal. Pod/container names are
@@ -292,6 +295,12 @@ async function openPodLogs(
         args.push('-c', containerArg);
     }
 
+    if (logStreamTerminals.size >= MAX_LOG_STREAMS) {
+        await cleanup();
+        void vscode.window.showWarningMessage(t('At most {0} log streams can be open at once. Close one first.', MAX_LOG_STREAMS));
+        return;
+    }
+
     const terminal = vscode.window.createTerminal({
         name: `📜 ${podName} (${cluster.name})`,
         env: {
@@ -300,6 +309,7 @@ async function openPodLogs(
         },
     });
     logTerminalCleanups.set(terminal, cleanup);
+    logStreamTerminals.add(terminal);
     terminal.sendText(`kubectl ${args.join(' ')}`);
     terminal.show();
     log.info(`[logs] streaming pod=${podName} ns=${namespace} cluster="${cluster.name}"`);
@@ -541,6 +551,7 @@ export function registerResourceViewer(
     // Cleans up the persistent temp kubeconfig for a "logs" terminal once it closes
     // (the user closing the terminal panel is how `kubectl logs -f` gets stopped).
     const logsCleanupListener = vscode.window.onDidCloseTerminal(terminal => {
+        logStreamTerminals.delete(terminal);
         const cleanup = logTerminalCleanups.get(terminal);
         if (cleanup) {
             logTerminalCleanups.delete(terminal);

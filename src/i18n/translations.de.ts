@@ -328,4 +328,8 @@ export const de: Record<string, string> = {
     'Kubectl Control: loading {0}…': 'Kubectl Control: {0} werden geladen…',
     // ── webviews/templates.ts (unlock progress) ──────────────────────────────
     'Unlocking…': 'Wird entsperrt…',
+    'Testing connection…': 'Verbindung wird getestet…',
+    // ── resource limits (remote-friendly) ────────────────────────────────────
+    'At most {0} port-forwards can be active at once. Stop one first.': 'Es können höchstens {0} Port-Forwards gleichzeitig aktiv sein. Beende zuerst einen.',
+    'At most {0} log streams can be open at once. Close one first.': 'Es können höchstens {0} Log-Streams gleichzeitig offen sein. Schließe zuerst einen.',
 };

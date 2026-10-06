@@ -23,7 +23,19 @@ export class LockService {
     private _lockedUntil = 0;
     private _bruteForceLoaded = false;
 
-    constructor(private readonly secrets: vscode.SecretStorage) {}
+    /**
+     * Cached ENABLED flag. Every SecretStorage read is a round trip to the local
+     * VS Code client (through the SSH tunnel on Remote-SSH), and isEnabled() runs on
+     * every tree refresh and webview message. Another window changing the flag
+     * invalidates the cache via secrets.onDidChange.
+     */
+    private _enabledCache?: boolean;
+
+    constructor(private readonly secrets: vscode.SecretStorage) {
+        secrets.onDidChange(e => {
+            if (e.key === ENABLED_KEY) { this._enabledCache = undefined; }
+        });
+    }
 
     /**
      * Loads persisted brute-force counters from SecretStorage.
@@ -49,7 +61,10 @@ export class LockService {
     }
 
     async isEnabled(): Promise<boolean> {
-        return (await this.secrets.get(ENABLED_KEY)) === 'true';
+        if (this._enabledCache === undefined) {
+            this._enabledCache = (await this.secrets.get(ENABLED_KEY)) === 'true';
+        }
+        return this._enabledCache;
     }
 
     isUnlocked(): boolean {
@@ -71,6 +86,7 @@ export class LockService {
         await this.secrets.store(SALT_KEY, salt);
         await this.secrets.store(HASH_KEY, hash);
         await this.secrets.store(ENABLED_KEY, 'true');
+        this._enabledCache = true;
         this._unlocked = true;
         // S2 — reset brute-force counters on fresh password set
         this._bruteForceLoaded = true;
@@ -96,6 +112,7 @@ export class LockService {
         await this.secrets.delete(HASH_KEY);
         await this.secrets.delete(SALT_KEY);
         await this.secrets.store(ENABLED_KEY, 'false');
+        this._enabledCache = false;
         this._unlocked = false;
         this._onStateChange.fire();
     }

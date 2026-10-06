@@ -47,12 +47,12 @@ export function activate(context: vscode.ExtensionContext) {
     const terminalManager = new TerminalManager(store);
     terminalManager.cleanupOrphanedTempFiles().catch(e => log.warn('Temp cleanup on startup failed', e));
     const gistSync = new GistSyncService(store, context.secrets, context.globalState);
-    const clusterStatusService = new ClusterStatusService(store, terminalManager, isLocked);
+    const clusterStatusService = new ClusterStatusService(store, terminalManager, isLocked, context.globalState);
     // Background status checks are skipped while locked — catch up right after unlocking.
     context.subscriptions.push(lockService.onStateChange(() => {
         // Slight delay: let the connections form and tree render first, then start the
         // (kubectl-heavy) catch-up round.
-        if (lockService.isUnlocked()) { setTimeout(() => void clusterStatusService.checkAll(), 1500); }
+        if (lockService.isUnlocked() && vscode.window.state.focused) { setTimeout(() => void clusterStatusService.checkAll(), 1500); }
     }));
     const treeProvider = new ClusterTreeDataProvider(store, terminalManager, lockService, clusterStatusService);
     const connectionsViewProvider = new ConnectionsViewProvider(
@@ -91,7 +91,10 @@ export function activate(context: vscode.ExtensionContext) {
                 activeClusterStatus.show();
             }
         }),
-        vscode.window.registerWebviewViewProvider(ConnectionsViewProvider.viewType, connectionsViewProvider),
+        vscode.window.registerWebviewViewProvider(ConnectionsViewProvider.viewType, connectionsViewProvider, {
+            // Keep the form alive while the sidebar is hidden: re-showing it would otherwise re-send the full ~750-line HTML over the remote RPC channel.
+            webviewOptions: { retainContextWhenHidden: true },
+        }),
         terminalManager,
         gistSync,
         clusterStatusService,

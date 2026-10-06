@@ -139,12 +139,19 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
 
     /** Quick best-effort connectivity check. Returns null on success, or an error message. */
     private async testConnection(kubeconfigData: string, context: string | undefined): Promise<string | null> {
-        try {
-            await execWithKubeconfig(kubeconfigData, context, ['cluster-info', '--request-timeout=3s'], 5000);
-            return null;
-        } catch (e) {
-            return e instanceof Error ? e.message : String(e);
-        }
+        // The check can take several seconds (credential plugin + request timeout) — show progress
+        // instead of leaving the form looking frozen.
+        return vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: t('Testing connection…') },
+            async () => {
+                try {
+                    await execWithKubeconfig(kubeconfigData, context, ['cluster-info', '--request-timeout=3s'], 5000);
+                    return null;
+                } catch (e) {
+                    return e instanceof Error ? e.message : String(e);
+                }
+            },
+        );
     }
 
     private async addCluster(msg: Record<string, string>): Promise<void> {
@@ -199,7 +206,13 @@ export class ConnectionsViewProvider implements vscode.WebviewViewProvider {
         // SECURITY: the connection test runs kubectl → show any credential plugin first.
         const trust = await confirmKubeconfigExec(name, kubeconfigData);
         if (!trust.ok) { return; }
-        const err = await this.testConnection(kubeconfigData, ctx);
+        // Renaming / regrouping / recolouring does not change how kubectl connects — only
+        // re-test when the kubeconfig or the context actually changed.
+        const existing = (await this.store.getClusters()).find(c => c.id === msg.id);
+        const connectionChanged = !existing
+            || existing.kubeconfigData.trim() !== kubeconfigData
+            || (existing.activeContext ?? undefined) !== ctx;
+        const err = connectionChanged ? await this.testConnection(kubeconfigData, ctx) : null;
         if (err !== null) {
             const btnSave = t('Save anyway');
             const choice = await vscode.window.showWarningMessage(

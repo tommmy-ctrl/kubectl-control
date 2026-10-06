@@ -2,21 +2,21 @@ import * as assert from 'assert';
 import { encryptData, decryptData, isEncryptedFile, deriveHash, deriveHashAsync } from '../../crypto';
 
 suite('crypto', () => {
-    test('encryptData/decryptData round-trip', () => {
+    test('encryptData/decryptData round-trip', async () => {
         const plaintext = 'hello kubernetes world';
         const password = 'supersecret';
-        const payload = encryptData(plaintext, password);
-        const result = decryptData(payload, password);
+        const payload = await encryptData(plaintext, password);
+        const result = await decryptData(payload, password);
         assert.strictEqual(result, plaintext);
     });
 
-    test('decryptData throws with wrong password', () => {
-        const payload = encryptData('secret data', 'correct-password');
-        assert.throws(() => decryptData(payload, 'wrong-password'));
+    test('decryptData throws with wrong password', async () => {
+        const payload = await encryptData('secret data', 'correct-password');
+        await assert.rejects(decryptData(payload, 'wrong-password'));
     });
 
-    test('isEncryptedFile returns true for valid payload', () => {
-        const payload = encryptData('test', 'pw');
+    test('isEncryptedFile returns true for valid payload', async () => {
+        const payload = await encryptData('test', 'pw');
         assert.strictEqual(isEncryptedFile(payload), true);
     });
 

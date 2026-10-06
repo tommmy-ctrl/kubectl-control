@@ -229,6 +229,44 @@ export class ClusterStore {
         await this._writeQueue;
     }
 
+    /** Pending lastUsed stamps, flushed in one quiet write (see touchCluster). */
+    private readonly _touched = new Map<string, number>();
+    private _touchTimer?: ReturnType<typeof setTimeout>;
+
+    /**
+     * Record "cluster was just used" without an immediate write. The whole cluster list
+     * (all kubeconfigs) lives in ONE secret, so a regular updateCluster() on every
+     * terminal open/focus re-sent every kubeconfig through the SSH tunnel and triggered
+     * an encrypted GitHub-Sync push. The stamp is applied to the cache right away and
+     * persisted later in a single write that does not fire onDidChange.
+     */
+    public touchCluster(id: string): void {
+        const now = Date.now();
+        const cached = this._cache?.find(c => c.id === id);
+        if (cached) { cached.lastUsed = now; }
+        this._touched.set(id, now);
+        this._touchTimer ??= setTimeout(() => {
+            this._touchTimer = undefined;
+            void this.flushTouched();
+        }, 15_000);
+    }
+
+    private flushTouched(): Promise<void> {
+        this._writeQueue = this._writeQueue.then(async () => {
+            if (this._touched.size === 0) { return; }
+            const stamps = new Map(this._touched);
+            this._touched.clear();
+            const clusters = await this.getClusters();
+            let dirty = false;
+            for (const c of clusters) {
+                const ts = stamps.get(c.id);
+                if (ts !== undefined) { c.lastUsed = ts; dirty = true; }
+            }
+            if (dirty) { await this.save(clusters, true); }
+        }).catch(e => log.warn('store: could not persist lastUsed', e));
+        return this._writeQueue;
+    }
+
     public async deleteCluster(id: string): Promise<void> {
         this._writeQueue = this._writeQueue.then(async () => {
             let clusters = await this.getClusters();
@@ -294,7 +332,7 @@ export class ClusterStore {
      * Persists the cluster array to SecretStorage using the versioned envelope format,
      * updates the in-memory cache, and fires the change event.
      */
-    private async save(clusters: ClusterProfile[]): Promise<void> {
+    private async save(clusters: ClusterProfile[], quiet = false): Promise<void> {
         const envelope: StoredEnvelope = {
             schemaVersion: CURRENT_SCHEMA_VERSION,
             clusters,
@@ -303,6 +341,6 @@ export class ClusterStore {
         syncApprovedFingerprints(clusters);
         // Update cache so subsequent getClusters() calls see the committed state.
         this._cache = clusters;
-        this._onDidChange.fire();
+        if (!quiet) { this._onDidChange.fire(); }
     }
 }

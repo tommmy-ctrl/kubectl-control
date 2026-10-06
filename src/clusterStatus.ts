@@ -109,6 +109,11 @@ export class ClusterStatusService implements vscode.Disposable {
     private _lastRoundAt = 0;
     /** Clusters whose API server does not support `auth whoami` — go straight to cluster-info. */
     private readonly _useClusterInfo = new Set<string>();
+    /** Persisted so a window reload / SSH reconnect does not spawn the failing `auth whoami` again. */
+    private static readonly USE_CLUSTER_INFO_KEY = 'kubectl-control.useClusterInfo';
+
+    private _initialTimer?: ReturnType<typeof setTimeout>;
+    private _fireTimer?: ReturnType<typeof setTimeout>;
 
     /**
      * @param isLocked SECURITY: background checks run kubectl (and with it any
@@ -119,9 +124,17 @@ export class ClusterStatusService implements vscode.Disposable {
         private readonly store: ClusterStore,
         private readonly terminalManager: TerminalManager,
         private readonly isLocked: () => Promise<boolean> = async () => false,
+        private readonly globalState?: vscode.Memento,
     ) {
-        // Always do an immediate check on startup
-        this.checkAll().catch(() => undefined);
+        for (const id of globalState?.get<string[]>(ClusterStatusService.USE_CLUSTER_INFO_KEY, []) ?? []) {
+            this._useClusterInfo.add(id);
+        }
+        // Startup check: delayed with jitter and only for the focused window. Several
+        // windows to the same host (or a Remote-SSH reconnect) must not start all their
+        // kubectl processes at the same moment. An unfocused window catches up on focus.
+        this._initialTimer = setTimeout(() => {
+            if (vscode.window.state.focused) { this.checkAll().catch(() => undefined); }
+        }, 1500 + Math.floor(Math.random() * 2500));
         this._startTimer();
 
         // A cluster whose credential plugin was just approved should not wait for the next tick.
@@ -238,12 +251,14 @@ export class ClusterStatusService implements vscode.Disposable {
             return;
         }
         this._inFlight.add(id);
+        let changed = false;
 
         try {
             const newStatus = await this._determineStatus(id, kubeconfigData, context, name);
             const prevStatus = this._statuses.get(id);
 
             this._statuses.set(id, newStatus);
+            changed = newStatus !== prevStatus;
 
             if (newStatus === 'reachable') {
                 this._consecutiveFailures.set(id, 0);
@@ -252,7 +267,10 @@ export class ClusterStatusService implements vscode.Disposable {
             } else {
                 const prev = this._consecutiveFailures.get(id) ?? 0;
                 this._consecutiveFailures.set(id, prev + 1);
-                log.warn(`Cluster ${id} status: ${newStatus} (consecutive failures: ${prev + 1})`);
+                // Each log line is an RPC through the SSH tunnel: first failure, then every 10th.
+                if (prev === 0 || (prev + 1) % 10 === 0) {
+                    log.warn(`Cluster ${id} status: ${newStatus} (consecutive failures: ${prev + 1})`);
+                }
 
                 // Notify once when a cluster newly becomes unauthorized
                 if (newStatus === 'unauthorized' && prevStatus !== 'unauthorized' && !this._authNotified.has(id)) {
@@ -262,8 +280,17 @@ export class ClusterStatusService implements vscode.Disposable {
             }
         } finally {
             this._inFlight.delete(id);
-            this._onDidChange.fire();
+            // Only real status changes repaint the tree; bursts within a round coalesce.
+            if (changed) { this._scheduleFire(); }
         }
+    }
+
+    private _scheduleFire(): void {
+        if (this._fireTimer) { return; }
+        this._fireTimer = setTimeout(() => {
+            this._fireTimer = undefined;
+            this._onDidChange.fire();
+        }, 250);
     }
 
     /**
@@ -300,6 +327,7 @@ export class ClusterStatusService implements vscode.Disposable {
                 // Cluster may not support SelfSubjectReview — remember and use the classic check.
                 log.info(`Cluster "${name}": auth whoami unsupported, using cluster-info for status checks`);
                 this._useClusterInfo.add(id);
+                void this.globalState?.update(ClusterStatusService.USE_CLUSTER_INFO_KEY, [...this._useClusterInfo]);
                 return this._clusterInfoStatus(kubeconfigData, context);
             }
 
@@ -334,6 +362,8 @@ export class ClusterStatusService implements vscode.Disposable {
 
     dispose(): void {
         if (this._timer) { clearInterval(this._timer); }
+        if (this._initialTimer) { clearTimeout(this._initialTimer); }
+        if (this._fireTimer) { clearTimeout(this._fireTimer); }
         this._storeSub.dispose();
         this._configSub.dispose();
         this._windowSub.dispose();
