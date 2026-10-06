@@ -235,7 +235,7 @@ export class TerminalManager implements vscode.Disposable {
             existing[existing.length - 1].show();
             this._activeClusterId = profile.id;
             this._onActiveChange.fire(profile.id);
-            await this.store.updateCluster(profile.id, { lastUsed: Date.now() });
+            this.store.touchCluster(profile.id);
             return;
         }
         await this.openAdditional(profile);
@@ -247,7 +247,7 @@ export class TerminalManager implements vscode.Disposable {
         await this.openNew(profile);
         this._activeClusterId = profile.id;
         this._onActiveChange.fire(profile.id);
-        await this.store.updateCluster(profile.id, { lastUsed: Date.now() });
+        this.store.touchCluster(profile.id);
     }
 
     /** kubectl-availability check + production confirmation, shared by every path that opens a new terminal. */

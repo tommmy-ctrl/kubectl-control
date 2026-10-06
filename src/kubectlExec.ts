@@ -1,12 +1,87 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn, execFile } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { assertKubeconfigAllowed } from './execTrust';
 
-const execFileAsync = promisify(execFile);
+/** Kill `child` and everything it started (credential plugins such as aws / gke-gcloud-auth-plugin). */
+function killTree(child: ReturnType<typeof spawn>): void {
+    const pid = child.pid;
+    if (pid === undefined) { return; }
+    try {
+        if (process.platform === 'win32') {
+            execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => undefined);
+        } else {
+            process.kill(-pid, 'SIGKILL');   // negative pid = whole process group (child is detached)
+        }
+    } catch {
+        try { child.kill('SIGKILL'); } catch { /* already gone */ }
+    }
+}
+
+/**
+ * Like promisify(execFile), but a timeout kills the whole process tree. With plain
+ * execFile only kubectl gets SIGTERM; the credential plugin it spawned lives on as an
+ * orphan, and unreachable clusters piled those up on the (remote) host.
+ */
+function execFileTree(
+    binary: string,
+    args: string[],
+    opts: { env: NodeJS.ProcessEnv; timeout: number; maxBuffer: number },
+): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+        const child = spawn(binary, args, {
+            env: opts.env,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            detached: process.platform !== 'win32',
+            windowsHide: true,
+        });
+        let stdout = '';
+        let stderr = '';
+        let size = 0;
+        let failure: string | undefined;
+        let done = false;
+
+        const finish = (err: Error | undefined, code?: number | null) => {
+            if (done) { return; }
+            done = true;
+            clearTimeout(timer);
+            if (err || failure || code !== 0) {
+                const e = new Error(err?.message ?? failure ?? `Command failed: ${binary} ${args.join(' ')}
+${stderr}`) as Error & {
+                    stdout?: string; stderr?: string; code?: number | string | null; killed?: boolean;
+                };
+                e.stdout = stdout;
+                e.stderr = stderr;
+                e.code = (err as NodeJS.ErrnoException | undefined)?.code ?? code;
+                e.killed = failure !== undefined;
+                reject(e);
+            } else {
+                resolve({ stdout, stderr });
+            }
+        };
+
+        const timer = setTimeout(() => {
+            failure = `Command timed out after ${opts.timeout}ms: ${binary}`;
+            killTree(child);
+        }, opts.timeout);
+
+        const collect = (which: 'out' | 'err') => (chunk: Buffer) => {
+            size += chunk.length;
+            if (size > opts.maxBuffer) {
+                failure ??= 'stdout maxBuffer length exceeded';
+                killTree(child);
+                return;
+            }
+            if (which === 'out') { stdout += chunk.toString('utf8'); } else { stderr += chunk.toString('utf8'); }
+        };
+        child.stdout?.on('data', collect('out'));
+        child.stderr?.on('data', collect('err'));
+        child.on('error', err => finish(err));
+        child.on('close', code => finish(undefined, code));
+    });
+}
 
 /**
  * Output limit per call. Node's default of 1 MiB is far too small for
@@ -156,7 +231,7 @@ export async function execWithKubeconfig(
         }
         cmdArgs.push(...args);
 
-        const { stdout, stderr } = await execFileAsync(binary, cmdArgs, {
+        const { stdout, stderr } = await execFileTree(binary, cmdArgs, {
             env: { ...process.env, KUBECONFIG: tempFile },
             timeout: timeoutMs,
             maxBuffer: MAX_OUTPUT_BYTES,

@@ -27,10 +27,19 @@ function fromHex(hex: string): Uint8Array {
     return arr;
 }
 
-export function encryptData(plaintext: string, password: string): EncryptedFile {
+/** PBKDF2 on libuv's thread pool — the sync variant freezes the (remote) extension host for 0.3–1.5 s. */
+function deriveKey(password: string, salt: Uint8Array): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+        nodeCrypto.pbkdf2(password, salt, ITERATIONS, KEY_LEN, DIGEST, (err, key) => {
+            if (err) { reject(err); } else { resolve(key); }
+        });
+    });
+}
+
+export async function encryptData(plaintext: string, password: string): Promise<EncryptedFile> {
     const salt = nodeCrypto.randomBytes(SALT_LEN);
     const iv = nodeCrypto.randomBytes(IV_LEN);
-    const key = nodeCrypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LEN, DIGEST);
+    const key = await deriveKey(password, salt);
     const cipher = nodeCrypto.createCipheriv(ALGORITHM, key, iv);
     const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
     return {
@@ -42,12 +51,12 @@ export function encryptData(plaintext: string, password: string): EncryptedFile 
     };
 }
 
-export function decryptData(payload: EncryptedFile, password: string): string {
+export async function decryptData(payload: EncryptedFile, password: string): Promise<string> {
     const salt = fromHex(payload.salt);
     const iv = fromHex(payload.iv);
     const tag = fromHex(payload.tag);
     const data = fromHex(payload.data);
-    const key = nodeCrypto.pbkdf2Sync(password, salt, ITERATIONS, KEY_LEN, DIGEST);
+    const key = await deriveKey(password, salt);
     const decipher = nodeCrypto.createDecipheriv(ALGORITHM, key, iv);
     decipher.setAuthTag(tag);
     return decipher.update(data).toString('utf8') + decipher.final('utf8');

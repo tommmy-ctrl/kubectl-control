@@ -178,8 +178,15 @@ export class ClusterTreeDataProvider implements vscode.TreeDataProvider<ClusterT
         }
     }
 
+    private _refreshTimer?: ReturnType<typeof setTimeout>;
+
+    /** Coalesces bursts (status checks, terminal events) into one tree repaint. */
     refresh(): void {
-        this._onDidChangeTreeData.fire();
+        if (this._refreshTimer) { return; }
+        this._refreshTimer = setTimeout(() => {
+            this._refreshTimer = undefined;
+            this._onDidChangeTreeData.fire();
+        }, 100);
     }
 
     /** Current filter text (raw, as typed — not lowercased). Empty string = no filter. */

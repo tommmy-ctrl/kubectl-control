@@ -97,7 +97,7 @@ export class GistSyncService implements vscode.Disposable {
                 async () => {
                     try {
                         const payload = await this.fetchGist(token, gistId);
-                        const json    = decryptData(payload, password);
+                        const json    = await decryptData(payload, password);
                         const count   = await this.store.importClusters(json);
                         const now     = Date.now();
                         this._localTimestamp = now;
@@ -174,7 +174,7 @@ export class GistSyncService implements vscode.Disposable {
 
             const now     = Date.now();
             const json    = await this.store.exportClusters();
-            const payload: GistPayload = { ...encryptData(json, password), updatedAt: now };
+            const payload: GistPayload = { ...(await encryptData(json, password)), updatedAt: now };
 
             if (gistId) {
                 await this.updateGist(token, gistId, payload);
