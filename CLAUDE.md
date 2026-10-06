@@ -116,10 +116,11 @@ Full playbook: [docs/RELEASE.md](docs/RELEASE.md).
 - Feature work on `feature/*` → PR to `beta`.
 - **Beta → Prod** via the `promote` workflow (or manually: merge `beta` into `main` +
   set tag `vX.Y.0`). The final tag triggers the Marketplace publish.
-- **Marketplace pre-release (occasional, deliberate — not the default path):** tag `vX.Y.Z-pre`
+- **Marketplace pre-release (standing permission — publish it with every beta round, no need to ask):** tag `vX.Y.Z-pre`
   (`Z ≥ 1`, same number as the current beta dev round) pushed directly from a `beta` commit (no
   promote to `main` needed) triggers `release.yml` in pre-release mode
-  (`vsce publish --pre-release`). Unlike the GitHub-only `beta-vX.Y.Z` channel, this *does* show
+  (`vsce publish --pre-release`). Because it is flagged as a pre-release it is always allowed to go to the
+  Marketplace; only stable `vX.Y.0` tags still need an explicit request. Unlike the GitHub-only `beta-vX.Y.Z` channel, this *does* show
   up in Marketplace search and *does* auto-update, but only for users who opted into
   "Switch to Pre-Release Version". See [docs/RELEASE.md](docs/RELEASE.md) §1b.
 - **Versioning scheme — one project-specific rule on top of SemVer: stable is always `X.Y.0`;
