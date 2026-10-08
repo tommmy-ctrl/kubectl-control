@@ -2,7 +2,7 @@
   "name": "kubectl-control",
   "displayName": "Kubectl Control",
   "description": "Manage multiple Kubernetes clusters with isolated kubeconfig terminals, groups, pods/logs, port-forward, Helm and RBAC views, encrypted export/import and GitHub Sync, password lock.",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "author": "Tom Kölsch",
   "publisher": "tommmy-ctrl",
   "license": "MIT",
@@ -55,7 +55,7 @@
       {
         "command": "kubectl-control.openNewTerminal",
         "title": "%command.openNewTerminal%",
-        "icon": "$(terminal-add)"
+        "icon": "$(add)"
       },
       {
         "command": "kubectl-control.closeAllTerminals",

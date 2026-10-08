@@ -9,6 +9,13 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.6.2] – 2026-10-08 — UI fixes (beta)
+
+### Fixed
+- **"Color the prompt"** in the connection form no longer wraps into three lines in a narrow sidebar.
+- **"Open New Terminal"** inline button on a connection now has an icon (`$(add)`); the previous
+  codicon name did not exist, so the button showed no symbol.
+
 ## [1.6.1] – 2026-10-06 — Remote-SSH performance (beta)
 
 ### Fixed

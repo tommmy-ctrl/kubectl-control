@@ -518,12 +518,14 @@ export function formHtml(nonce: string, cspSource: string, version: string, lang
         .btn-row { display: flex; gap: 7px; margin-top: 2px; }
         .btn-row .btn-primary { flex: 1; }
         #contextGroup { display: none; }
-        .prompt-color-row { display: flex; align-items: center; gap: 12px; }
+        .prompt-color-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
         .checkbox-inline {
-            display: flex; align-items: center; gap: 7px; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
             font-size: 0.85rem; color: var(--vscode-foreground); user-select: none;
+            white-space: nowrap;
         }
-        .checkbox-inline input { cursor: pointer; margin: 0; }
+        /* a global "input { width: 100% }" would stretch the checkbox and squeeze the label */
+        .checkbox-inline input { cursor: pointer; margin: 0; width: auto; flex: 0 0 auto; }
         #promptColor {
             width: 46px; height: 28px; padding: 2px; flex: 0 0 auto;
             border: 1px solid var(--vscode-input-border, rgba(255,255,255,0.12));
