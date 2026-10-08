@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises';
 import { spawn, execFile } from 'node:child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { assertKubeconfigAllowed } from './execTrust';
+import { isPrivateOwnDir, ownsDir } from './mcp/shared';
 
 /** Kill `child` and everything it started (credential plugins such as aws / gke-gcloud-auth-plugin). */
 function killTree(child: ReturnType<typeof spawn>): void {
@@ -108,7 +109,14 @@ let _tempDirReady: Promise<void> | undefined;
 
 export function ensureTempDir(): Promise<void> {
     if (!_tempDirReady) {
-        _tempDirReady = fs.mkdir(TEMP_DIR, { recursive: true, mode: 0o700 }).then(() => undefined);
+        _tempDirReady = fs.mkdir(TEMP_DIR, { recursive: true, mode: 0o700 }).then(async () => {
+            // SECURITY: the name is predictable and /tmp is shared. A directory another user created
+            // first would let them swap the kubeconfigs kubectl is about to read — refuse it.
+            if (process.platform === 'win32') { return; }
+            if (!ownsDir(TEMP_DIR)) { throw new Error(`Temp directory ${TEMP_DIR} is not owned by you — refusing to use it.`); }
+            await fs.chmod(TEMP_DIR, 0o700);
+            if (!isPrivateOwnDir(TEMP_DIR)) { throw new Error(`Temp directory ${TEMP_DIR} is not private — refusing to use it.`); }
+        }).catch(e => { _tempDirReady = undefined; throw e; });
     }
     return _tempDirReady;
 }

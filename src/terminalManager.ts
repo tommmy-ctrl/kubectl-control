@@ -250,6 +250,19 @@ export class TerminalManager implements vscode.Disposable {
         this.store.touchCluster(profile.id);
     }
 
+    /**
+     * Opens a new cluster terminal and starts an AI CLI (`aiCommand`) in it. The terminal is
+     * the normal isolated one, so the AI only sees this cluster's temp KUBECONFIG.
+     * `aiCommand` must already be validated by the caller (see features/aiTerminal.ts).
+     */
+    async openAiTerminal(profile: ClusterProfile, aiCommand: string): Promise<void> {
+        if (!await this.canOpenTerminal(profile)) { return; }
+        await this.openNew(profile, aiCommand);
+        this._activeClusterId = profile.id;
+        this._onActiveChange.fire(profile.id);
+        this.store.touchCluster(profile.id);
+    }
+
     /** kubectl-availability check + production confirmation, shared by every path that opens a new terminal. */
     private async canOpenTerminal(profile: ClusterProfile): Promise<boolean> {
         // SECURITY: kubectl in this terminal would run the kubeconfig's credential plugin.
@@ -318,7 +331,7 @@ export class TerminalManager implements vscode.Disposable {
         return tempKubeconfigPath('term', clusterId);
     }
 
-    private async openNew(profile: ClusterProfile): Promise<void> {
+    private async openNew(profile: ClusterProfile, aiCommand?: string): Promise<void> {
         try {
             // SECURITY: defence in depth — canOpenTerminal() already asked for approval.
             assertKubeconfigAllowed(profile.kubeconfigData);
@@ -332,7 +345,8 @@ export class TerminalManager implements vscode.Disposable {
             // Number the tab (e.g. "(2)") once a second+ terminal is opened for the same cluster,
             // so they're distinguishable in the terminal panel.
             const openCount = this.openTerminals.get(profile.id)?.length ?? 0;
-            const name = openCount > 0 ? `☸ ${profile.name} (${openCount + 1})` : `☸ ${profile.name}`;
+            const icon = aiCommand ? '🤖' : '☸';
+            const name = openCount > 0 ? `${icon} ${profile.name} (${openCount + 1})` : `${icon} ${profile.name}`;
 
             const terminal = vscode.window.createTerminal({
                 name,
@@ -385,6 +399,11 @@ export class TerminalManager implements vscode.Disposable {
             if (profile.isProd === true) {
                 const safeName = sanitizePromptName(profile.name);
                 terminal.sendText(`echo "${t('⚠️  WARNING: This is a PRODUCTION ENVIRONMENT ({0}). Changes take effect immediately.', safeName)}"`);
+            }
+
+            // AI terminal: start the tool last, after prompt/clear/prod warning.
+            if (aiCommand) {
+                terminal.sendText(aiCommand);
             }
 
             const terminals = this.openTerminals.get(profile.id) ?? [];

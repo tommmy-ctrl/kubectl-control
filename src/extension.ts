@@ -13,6 +13,8 @@ import { registerResourceViewer } from './features/resourceViewer';
 import { registerPortForward } from './features/portForward';
 import { registerHelmBrowser } from './features/helmBrowser';
 import { registerRbacViewer } from './features/rbacViewer';
+import { registerAiTerminal } from './features/aiTerminal';
+import { registerMcpBridge } from './features/mcpBridge';
 import { t, refreshLanguage } from './i18n';
 import { initCommandGuard, isLocked } from './commandGuard';
 
@@ -106,6 +108,8 @@ export function activate(context: vscode.ExtensionContext) {
         ...registerPortForward(context, store),
         ...registerHelmBrowser(context, store),
         ...registerRbacViewer(context, store),
+        ...registerAiTerminal(context, store, terminalManager),
+        ...registerMcpBridge(context, store, terminalManager, clusterStatusService),
     );
     log.info('kubectl-control activated');
 }

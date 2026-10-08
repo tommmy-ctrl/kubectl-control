@@ -9,6 +9,30 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.6.3] – 2026-10-08 — AI terminals and AI agent access (beta)
+
+Includes the UI fixes of 1.6.2 (prompt-colour row, "new terminal" icon).
+
+### Added
+- **AI terminal** (`Kubectl Control: Open AI Terminal (Claude / Codex)`, connection context menu):
+  opens the normal isolated cluster terminal (own `KUBECONFIG`, context, prompt, production
+  warning) and starts Claude Code or Codex in it, so the AI only sees that one cluster. The
+  default launch commands keep the tools in their "ask before acting" mode; commands that switch
+  approvals off, contain shell syntax or do not start `claude`/`codex` are refused. Settings:
+  `kubectl-control.ai.claudeCommand` / `codexCommand` (machine scope, never from a workspace).
+- **AI agent access over MCP** (opt-in, `kubectl-control.mcp.enabled`, set up with
+  `Kubectl Control: Set Up AI Agent Access (MCP)`): Claude Code and Codex can list your connections,
+  run read-only `kubectl` commands and open terminals. Changing commands (apply, delete, scale,
+  patch, label, annotate, cordon, rollout restart …) always need a confirmation dialog in VS Code;
+  production connections additionally ask before the first read. Secrets, `exec`, `cp`,
+  `port-forward`, watch/follow, `-f`, credential/server flags and `--all` for changes are refused.
+  Credentials never leave VS Code.
+
+### Security
+- Socket, token and discovery file live in a per-user directory that is verified to be owned by you
+  and closed to others (`$XDG_RUNTIME_DIR`, else the temp directory); the same check now guards the
+  temp kubeconfig directory, so another local user cannot pre-create it on a shared host.
+
 ## [1.6.2] – 2026-10-08 — UI fixes (beta)
 
 ### Fixed

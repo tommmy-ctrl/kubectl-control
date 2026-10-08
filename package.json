@@ -2,7 +2,7 @@
   "name": "kubectl-control",
   "displayName": "Kubectl Control",
   "description": "Manage multiple Kubernetes clusters with isolated kubeconfig terminals, groups, pods/logs, port-forward, Helm and RBAC views, encrypted export/import and GitHub Sync, password lock.",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "author": "Tom Kölsch",
   "publisher": "tommmy-ctrl",
   "license": "MIT",
@@ -130,6 +130,16 @@
         "icon": "$(plug)"
       },
       {
+        "command": "kubectl-control.openAiTerminal",
+        "title": "%command.openAiTerminal%",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "kubectl-control.setupMcp",
+        "title": "%command.setupMcp%",
+        "icon": "$(sparkle)"
+      },
+      {
         "command": "kubectl-control.stopPortForward",
         "title": "%command.stopPortForward%",
         "icon": "$(debug-stop)"
@@ -168,6 +178,24 @@
           "default": 0,
           "minimum": 0,
           "description": "%config.autoLockMinutes.description%"
+        },
+        "kubectl-control.mcp.enabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "description": "%config.mcp.enabled.description%"
+        },
+        "kubectl-control.ai.claudeCommand": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "%config.ai.claudeCommand.description%"
+        },
+        "kubectl-control.ai.codexCommand": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "%config.ai.codexCommand.description%"
         },
         "kubectl-control.statusCheckIntervalSeconds": {
           "type": "number",
@@ -290,6 +318,11 @@
           "command": "kubectl-control.startPortForward",
           "when": "view == kubectl-control.clustersView && viewItem == cluster",
           "group": "2_kubectl@3"
+        },
+        {
+          "command": "kubectl-control.openAiTerminal",
+          "when": "view == kubectl-control.clustersView && viewItem == cluster",
+          "group": "3_ai@1"
         },
         {
           "command": "kubectl-control.helmList",

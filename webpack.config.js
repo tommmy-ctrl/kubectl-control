@@ -11,7 +11,9 @@ module.exports = {
   mode: 'none',
   target: 'node',
   entry: {
-    extension: './src/extension.ts'
+    extension: './src/extension.ts',
+    // Standalone MCP server started by Claude Code / Codex (copied to ~/.kubectl-control/ at runtime)
+    'mcp-server': './src/mcp/server.ts'
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
