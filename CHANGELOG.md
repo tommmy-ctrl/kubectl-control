@@ -9,6 +9,18 @@ with `Z ≥ 1` and promote to the next unused `X.Y.0`, never to their own number
 published on the Marketplace's own Pre-Release channel (tag `vX.Y.Z-pre`, opt-in via
 "Switch to Pre-Release Version") — those entries say so explicitly.
 
+## [1.6.4] – 2026-11-16 — Dependency updates (beta)
+
+Includes everything from 1.6.3. No functional changes.
+
+### Changed
+- **Runtime dependencies:** `js-yaml` 5.5.0, `uuid` 14.0.3.
+- **Build/test tooling:** `@types/node` 26.6.6, `@typescript-eslint/*` 8.72.2, `eslint` 10.15.0,
+  `glob` 14.0.6, `mocha` 12.0.3, `webpack` 5.112.2, `webpack-cli` 7.3.1; transitive updates
+  (incl. `fast-uri` 3.1.9, `brace-expansion`) via the lockfile.
+- **CI:** workflows now run on Node.js 22 (Node 20 is end-of-life and `webpack-cli` 7.3 /
+  `@vscode/test-electron` 3.1 require Node 22); `azure/login` action v3.
+
 ## [1.6.3] – 2026-10-08 — AI terminals and AI agent access (beta)
 
 Includes the UI fixes of 1.6.2 (prompt-colour row, "new terminal" icon).
